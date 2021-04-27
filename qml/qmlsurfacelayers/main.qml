@@ -157,6 +157,7 @@ Item {
 
         Surface3D {
             id: surfaceLayers
+            objectName: layers
             width: surfaceView.width
             height: surfaceView.height
             theme: Theme3D {
@@ -166,6 +167,7 @@ Item {
             }
             shadowQuality: AbstractGraph3D.ShadowQualityNone
             selectionMode: AbstractGraph3D.SelectionItem
+            aspectRatio: 1
             scene.activeCamera.cameraPreset: Camera3D.CameraPresetIsometricLeft
             axisY.min: 20
             axisY.max: 200

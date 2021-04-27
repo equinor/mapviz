@@ -32,7 +32,10 @@
 #include <QtGui/QGuiApplication>
 #include <QtCore/QDir>
 #include <QtQuick/QQuickView>
+#include <QtQuick>
 #include <QtQml/QQmlEngine>
+#include <QSurface3DSeries>
+#include <Q3DSurface>
 #include "headers/xtgeo/pmread.h"
 
 
@@ -62,5 +65,24 @@ int main(int argc, char *argv[])
     viewer.show();
 
 
+    QList<QtDataVisualization::Q3DSurface*> surface = viewer.findChildren<QtDataVisualization::Q3DSurface*>("surfaceView");
+    QtDataVisualization::Q3DSurface* surfaceViewers = surface.first();
+
+
+
     return app.exec();
+}
+
+void addSurface(QtDataVisualization::Q3DSurface *layersView)
+{
+    if (layersView!=nullptr){
+       QtDataVisualization::QSurface3DSeries *surf = new QtDataVisualization::QSurface3DSeries();
+       surf->setFlatShadingEnabled(false);
+       surf->setDrawMode(QtDataVisualization::QSurface3DSeries::DrawSurface);
+       surf->setVisible(true);
+       surf->setObjectName("test");
+       layersView->addSeries(surf);
+    }
+
+
 }

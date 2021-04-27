@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
+#include <QSurfaceDataProxy>
 
 
 using namespace std;
@@ -17,6 +18,7 @@ vector<double> surfaceReader (string path,
     const char* fpath = path.c_str();
     FILE* fp;
     fp = fopen(fpath, "rb");
+    QtDataVisualization::QSurfaceDataArray *dataArray = new QtDataVisualization::QSurfaceDataArray;
     if (type == "pmd") {
         meta data;
         vector<double> surf(1);
@@ -31,9 +33,4 @@ vector<double> surfaceReader (string path,
        }
 }
 
-/*
-int main(void) {
-    surfaceReader(filepath, surfType);
-    return 0;
-}
-*/
+
