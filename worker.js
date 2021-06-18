@@ -1,9 +1,12 @@
 onmessage = function(e) {
-    const f = e.data[0];
-    FS.mkdir('/work');
-    FS.mount(WORKERFS, { files: [f] }, '/work');
-
-    console.log(Module.surfaceReader('/work/' + f.name));
+    msg = e.data;
+    if (msg[0]==="mount"){
+        const f = e.data[1];
+        FS.mount(WORKERFS, { files: [f] }, '/work')
+        console.log(Module.surfaceReader('/work/' + f.name,"pmd"));
+        console.log(Module.HEAP16);
+    }
 }
 
 self.importScripts('pmread.js');
+FS.mkdir('/work');

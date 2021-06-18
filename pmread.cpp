@@ -6,15 +6,18 @@
 #include <stdlib.h>
 #include <vector>
 #include <emscripten/bind.h>
+#include <emscripten/val.h>
 
 using namespace emscripten;
 using namespace std;
 //string filepath = "D:/code/surface/8.pmd" ;
 //string surfType = "pmd";
 
-int surfaceReader (string path)
-{   
-    string type = "pmd";
+val surfaceReader (string path,
+    string type)
+{
+    int result;
+    //string type = "pmd";
     const char* fpath = path.c_str();
     FILE* fp;
     fp = fopen(fpath, "rb");
@@ -26,18 +29,24 @@ int surfaceReader (string path)
             perror("File opening failed");
             return EXIT_FAILURE;
         }
-        int result = surf_im_petromod_bin(fp, &data, &surf);
+        result = surf_im_petromod_bin(fp, &data, &surf);
         /*
         for (std::vector<double>::const_iterator i = surf.begin(); i != surf.end(); ++i)
             std::cout << *i << ' ';
         */
         //std::cout << surf[500] <<endl;
-        return result;
        }
     else if (type == "irapbin") {
         //not implemented
-        return 1;
+        result = 0;
     }
+    else {
+        result = 1;
+    }
+
+    int *a = &result;
+    size_t bufferLength = sizeof(result);
+    return emscripten::val(emscripten::typed_memory_view(bufferLength, a));
 }
 
 EMSCRIPTEN_BINDINGS(pmread) {
