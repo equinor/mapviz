@@ -13,50 +13,36 @@ using namespace std;
 //string filepath = "D:/code/surface/8.pmd" ;
 //string surfType = "pmd";
 
-val surfaceReader (string path,
+vector<float> surfaceReader (string path,
     string type)
 {
-    int result;
-    //string type = "pmd";
+
     const char* fpath = path.c_str();
     FILE* fp;
+    vector<float> surf;
     fp = fopen(fpath, "rb");
-    //fopen_s(&fp, fpath, "rb");
     if (type == "pmd") {
-        meta data;
-        vector<double> surf;
+        
         if (!fp) {
             perror("File opening failed");
-            return EXIT_FAILURE;
         }
-        result = surf_im_petromod_bin(fp, &data, &surf);
-        /*
-        for (std::vector<double>::const_iterator i = surf.begin(); i != surf.end(); ++i)
-            std::cout << *i << ' ';
-        */
-        //std::cout << surf[500] <<endl;
+        surf_im_petromod_bin(fp, &surf);
+
        }
     else if (type == "irapbin") {
         //not implemented
-        result = 0;
+        surf.push_back(1.0);
     }
     else {
-        result = 1;
+        surf.push_back(1.0);
     }
 
-    int *a = &result;
-    size_t bufferLength = sizeof(result);
-    return emscripten::val(emscripten::typed_memory_view(bufferLength, a));
+    //size_t bufferLength = sizeof(result);
+    return surf;//emscripten::val(emscripten::typed_memory_view(bufferLength, result));
 }
 
 EMSCRIPTEN_BINDINGS(pmread) {
     emscripten::function("surfaceReader", &surfaceReader);
-}
-/*
-int main(void) {
-    int result = surfaceReader(filepath, surfType);
-    std::cout << result;
-    return result;
+    register_vector<float>("vector<float>");
 }
 
-*/

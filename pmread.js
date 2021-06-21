@@ -1747,12 +1747,95 @@ var ASM_CONSTS = {
       return demangleAll(js);
     }
 
+  var ExceptionInfoAttrs={DESTRUCTOR_OFFSET:0,REFCOUNT_OFFSET:4,TYPE_OFFSET:8,CAUGHT_OFFSET:12,RETHROWN_OFFSET:13,SIZE:16};
+  function ___cxa_allocate_exception(size) {
+      // Thrown object is prepended by exception metadata block
+      return _malloc(size + ExceptionInfoAttrs.SIZE) + ExceptionInfoAttrs.SIZE;
+    }
+
   function _atexit(func, arg) {
     }
   function ___cxa_atexit(a0,a1
   ) {
   return _atexit(a0,a1);
   }
+
+  function ExceptionInfo(excPtr) {
+      this.excPtr = excPtr;
+      this.ptr = excPtr - ExceptionInfoAttrs.SIZE;
+  
+      this.set_type = function(type) {
+        HEAP32[(((this.ptr)+(ExceptionInfoAttrs.TYPE_OFFSET))>>2)] = type;
+      };
+  
+      this.get_type = function() {
+        return HEAP32[(((this.ptr)+(ExceptionInfoAttrs.TYPE_OFFSET))>>2)];
+      };
+  
+      this.set_destructor = function(destructor) {
+        HEAP32[(((this.ptr)+(ExceptionInfoAttrs.DESTRUCTOR_OFFSET))>>2)] = destructor;
+      };
+  
+      this.get_destructor = function() {
+        return HEAP32[(((this.ptr)+(ExceptionInfoAttrs.DESTRUCTOR_OFFSET))>>2)];
+      };
+  
+      this.set_refcount = function(refcount) {
+        HEAP32[(((this.ptr)+(ExceptionInfoAttrs.REFCOUNT_OFFSET))>>2)] = refcount;
+      };
+  
+      this.set_caught = function (caught) {
+        caught = caught ? 1 : 0;
+        HEAP8[(((this.ptr)+(ExceptionInfoAttrs.CAUGHT_OFFSET))>>0)] = caught;
+      };
+  
+      this.get_caught = function () {
+        return HEAP8[(((this.ptr)+(ExceptionInfoAttrs.CAUGHT_OFFSET))>>0)] != 0;
+      };
+  
+      this.set_rethrown = function (rethrown) {
+        rethrown = rethrown ? 1 : 0;
+        HEAP8[(((this.ptr)+(ExceptionInfoAttrs.RETHROWN_OFFSET))>>0)] = rethrown;
+      };
+  
+      this.get_rethrown = function () {
+        return HEAP8[(((this.ptr)+(ExceptionInfoAttrs.RETHROWN_OFFSET))>>0)] != 0;
+      };
+  
+      // Initialize native structure fields. Should be called once after allocated.
+      this.init = function(type, destructor) {
+        this.set_type(type);
+        this.set_destructor(destructor);
+        this.set_refcount(0);
+        this.set_caught(false);
+        this.set_rethrown(false);
+      }
+  
+      this.add_ref = function() {
+        var value = HEAP32[(((this.ptr)+(ExceptionInfoAttrs.REFCOUNT_OFFSET))>>2)];
+        HEAP32[(((this.ptr)+(ExceptionInfoAttrs.REFCOUNT_OFFSET))>>2)] = value + 1;
+      };
+  
+      // Returns true if last reference released.
+      this.release_ref = function() {
+        var prev = HEAP32[(((this.ptr)+(ExceptionInfoAttrs.REFCOUNT_OFFSET))>>2)];
+        HEAP32[(((this.ptr)+(ExceptionInfoAttrs.REFCOUNT_OFFSET))>>2)] = prev - 1;
+        assert(prev > 0);
+        return prev === 1;
+      };
+    }
+  
+  var exceptionLast=0;
+  
+  var uncaughtExceptionCount=0;
+  function ___cxa_throw(ptr, type, destructor) {
+      var info = new ExceptionInfo(ptr);
+      // Initialize ExceptionInfo content after it was allocated in __cxa_allocate_exception.
+      info.init(type, destructor);
+      exceptionLast = ptr;
+      uncaughtExceptionCount++;
+      throw ptr + " - Exception catching is disabled, this exception cannot be caught. Compile with -s DISABLE_EXCEPTION_CATCHING=0 or DISABLE_EXCEPTION_CATCHING=2 to catch.";
+    }
 
   function setErrNo(value) {
       HEAP32[((___errno_location())>>2)] = value;
@@ -2265,6 +2348,13 @@ var ASM_CONSTS = {
         },write:function(stream, buffer, offset, length, position, canOwn) {
           // The data buffer should be a typed array view
           assert(!(buffer instanceof ArrayBuffer));
+          // If the buffer is located in main memory (HEAP), and if
+          // memory can grow, we can't hold on to references of the
+          // memory buffer, as they may get invalidated. That means we
+          // need to do copy its contents.
+          if (buffer.buffer === HEAP8.buffer) {
+            canOwn = false;
+          }
   
           if (!length) return 0;
           var node = stream.node;
@@ -4582,123 +4672,864 @@ var ASM_CONSTS = {
       });
     }
 
-  var emval_free_list=[];
+  function ClassHandle_isAliasOf(other) {
+      if (!(this instanceof ClassHandle)) {
+          return false;
+      }
+      if (!(other instanceof ClassHandle)) {
+          return false;
+      }
   
-  var emval_handle_array=[{},{value:undefined},{value:null},{value:true},{value:false}];
-  function __emval_decref(handle) {
-      if (handle > 4 && 0 === --emval_handle_array[handle].refcount) {
-          emval_handle_array[handle] = undefined;
-          emval_free_list.push(handle);
+      var leftClass = this.$$.ptrType.registeredClass;
+      var left = this.$$.ptr;
+      var rightClass = other.$$.ptrType.registeredClass;
+      var right = other.$$.ptr;
+  
+      while (leftClass.baseClass) {
+          left = leftClass.upcast(left);
+          leftClass = leftClass.baseClass;
+      }
+  
+      while (rightClass.baseClass) {
+          right = rightClass.upcast(right);
+          rightClass = rightClass.baseClass;
+      }
+  
+      return leftClass === rightClass && left === right;
+    }
+  
+  function shallowCopyInternalPointer(o) {
+      return {
+          count: o.count,
+          deleteScheduled: o.deleteScheduled,
+          preservePointerOnDelete: o.preservePointerOnDelete,
+          ptr: o.ptr,
+          ptrType: o.ptrType,
+          smartPtr: o.smartPtr,
+          smartPtrType: o.smartPtrType,
+      };
+    }
+  
+  function throwInstanceAlreadyDeleted(obj) {
+      function getInstanceTypeName(handle) {
+        return handle.$$.ptrType.registeredClass.name;
+      }
+      throwBindingError(getInstanceTypeName(obj) + ' instance already deleted');
+    }
+  
+  var finalizationGroup=false;
+  
+  function detachFinalizer(handle) {}
+  
+  function runDestructor($$) {
+      if ($$.smartPtr) {
+          $$.smartPtrType.rawDestructor($$.smartPtr);
+      } else {
+          $$.ptrType.registeredClass.rawDestructor($$.ptr);
       }
     }
-  
-  function count_emval_handles() {
-      var count = 0;
-      for (var i = 5; i < emval_handle_array.length; ++i) {
-          if (emval_handle_array[i] !== undefined) {
-              ++count;
-          }
+  function releaseClassHandle($$) {
+      $$.count.value -= 1;
+      var toDelete = 0 === $$.count.value;
+      if (toDelete) {
+          runDestructor($$);
       }
-      return count;
     }
-  
-  function get_first_emval() {
-      for (var i = 5; i < emval_handle_array.length; ++i) {
-          if (emval_handle_array[i] !== undefined) {
-              return emval_handle_array[i];
-          }
-      }
-      return null;
-    }
-  function init_emval() {
-      Module['count_emval_handles'] = count_emval_handles;
-      Module['get_first_emval'] = get_first_emval;
-    }
-  function __emval_register(value) {
-  
-      switch(value){
-        case undefined :{ return 1; }
-        case null :{ return 2; }
-        case true :{ return 3; }
-        case false :{ return 4; }
-        default:{
-          var handle = emval_free_list.length ?
-              emval_free_list.pop() :
-              emval_handle_array.length;
-  
-          emval_handle_array[handle] = {refcount: 1, value: value};
+  function attachFinalizer(handle) {
+      if ('undefined' === typeof FinalizationGroup) {
+          attachFinalizer = function (handle) { return handle; };
           return handle;
+      }
+      // If the running environment has a FinalizationGroup (see
+      // https://github.com/tc39/proposal-weakrefs), then attach finalizers
+      // for class handles.  We check for the presence of FinalizationGroup
+      // at run-time, not build-time.
+      finalizationGroup = new FinalizationGroup(function (iter) {
+          for (var result = iter.next(); !result.done; result = iter.next()) {
+              var $$ = result.value;
+              if (!$$.ptr) {
+                  console.warn('object already deleted: ' + $$.ptr);
+              } else {
+                  releaseClassHandle($$);
+              }
           }
-        }
+      });
+      attachFinalizer = function(handle) {
+          finalizationGroup.register(handle, handle.$$, handle.$$);
+          return handle;
+      };
+      detachFinalizer = function(handle) {
+          finalizationGroup.unregister(handle.$$);
+      };
+      return attachFinalizer(handle);
+    }
+  function ClassHandle_clone() {
+      if (!this.$$.ptr) {
+          throwInstanceAlreadyDeleted(this);
+      }
+  
+      if (this.$$.preservePointerOnDelete) {
+          this.$$.count.value += 1;
+          return this;
+      } else {
+          var clone = attachFinalizer(Object.create(Object.getPrototypeOf(this), {
+              $$: {
+                  value: shallowCopyInternalPointer(this.$$),
+              }
+          }));
+  
+          clone.$$.count.value += 1;
+          clone.$$.deleteScheduled = false;
+          return clone;
+      }
+    }
+  
+  function ClassHandle_delete() {
+      if (!this.$$.ptr) {
+          throwInstanceAlreadyDeleted(this);
+      }
+  
+      if (this.$$.deleteScheduled && !this.$$.preservePointerOnDelete) {
+          throwBindingError('Object already scheduled for deletion');
+      }
+  
+      detachFinalizer(this);
+      releaseClassHandle(this.$$);
+  
+      if (!this.$$.preservePointerOnDelete) {
+          this.$$.smartPtr = undefined;
+          this.$$.ptr = undefined;
+      }
+    }
+  
+  function ClassHandle_isDeleted() {
+      return !this.$$.ptr;
+    }
+  
+  var delayFunction=undefined;
+  
+  var deletionQueue=[];
+  
+  function flushPendingDeletes() {
+      while (deletionQueue.length) {
+          var obj = deletionQueue.pop();
+          obj.$$.deleteScheduled = false;
+          obj['delete']();
+      }
+    }
+  function ClassHandle_deleteLater() {
+      if (!this.$$.ptr) {
+          throwInstanceAlreadyDeleted(this);
+      }
+      if (this.$$.deleteScheduled && !this.$$.preservePointerOnDelete) {
+          throwBindingError('Object already scheduled for deletion');
+      }
+      deletionQueue.push(this);
+      if (deletionQueue.length === 1 && delayFunction) {
+          delayFunction(flushPendingDeletes);
+      }
+      this.$$.deleteScheduled = true;
+      return this;
+    }
+  function init_ClassHandle() {
+      ClassHandle.prototype['isAliasOf'] = ClassHandle_isAliasOf;
+      ClassHandle.prototype['clone'] = ClassHandle_clone;
+      ClassHandle.prototype['delete'] = ClassHandle_delete;
+      ClassHandle.prototype['isDeleted'] = ClassHandle_isDeleted;
+      ClassHandle.prototype['deleteLater'] = ClassHandle_deleteLater;
+    }
+  function ClassHandle() {
+    }
+  
+  var registeredPointers={};
+  
+  function ensureOverloadTable(proto, methodName, humanName) {
+      if (undefined === proto[methodName].overloadTable) {
+          var prevFunc = proto[methodName];
+          // Inject an overload resolver function that routes to the appropriate overload based on the number of arguments.
+          proto[methodName] = function() {
+              // TODO This check can be removed in -O3 level "unsafe" optimizations.
+              if (!proto[methodName].overloadTable.hasOwnProperty(arguments.length)) {
+                  throwBindingError("Function '" + humanName + "' called with an invalid number of arguments (" + arguments.length + ") - expects one of (" + proto[methodName].overloadTable + ")!");
+              }
+              return proto[methodName].overloadTable[arguments.length].apply(this, arguments);
+          };
+          // Move the previous function into the overload table.
+          proto[methodName].overloadTable = [];
+          proto[methodName].overloadTable[prevFunc.argCount] = prevFunc;
+      }
+    }
+  /** @param {number=} numArguments */
+  function exposePublicSymbol(name, value, numArguments) {
+      if (Module.hasOwnProperty(name)) {
+          if (undefined === numArguments || (undefined !== Module[name].overloadTable && undefined !== Module[name].overloadTable[numArguments])) {
+              throwBindingError("Cannot register public name '" + name + "' twice");
+          }
+  
+          // We are exposing a function with the same name as an existing function. Create an overload table and a function selector
+          // that routes between the two.
+          ensureOverloadTable(Module, name, name);
+          if (Module.hasOwnProperty(numArguments)) {
+              throwBindingError("Cannot register multiple overloads of a function with the same number of arguments (" + numArguments + ")!");
+          }
+          // Add the new function into the overload table.
+          Module[name].overloadTable[numArguments] = value;
+      }
+      else {
+          Module[name] = value;
+          if (undefined !== numArguments) {
+              Module[name].numArguments = numArguments;
+          }
+      }
+    }
+  
+  /** @constructor */
+  function RegisteredClass(
+      name,
+      constructor,
+      instancePrototype,
+      rawDestructor,
+      baseClass,
+      getActualType,
+      upcast,
+      downcast
+    ) {
+      this.name = name;
+      this.constructor = constructor;
+      this.instancePrototype = instancePrototype;
+      this.rawDestructor = rawDestructor;
+      this.baseClass = baseClass;
+      this.getActualType = getActualType;
+      this.upcast = upcast;
+      this.downcast = downcast;
+      this.pureVirtualFunctions = [];
+    }
+  
+  function upcastPointer(ptr, ptrClass, desiredClass) {
+      while (ptrClass !== desiredClass) {
+          if (!ptrClass.upcast) {
+              throwBindingError("Expected null or instance of " + desiredClass.name + ", got an instance of " + ptrClass.name);
+          }
+          ptr = ptrClass.upcast(ptr);
+          ptrClass = ptrClass.baseClass;
+      }
+      return ptr;
+    }
+  function constNoSmartPtrRawPointerToWireType(destructors, handle) {
+      if (handle === null) {
+          if (this.isReference) {
+              throwBindingError('null is not a valid ' + this.name);
+          }
+          return 0;
+      }
+  
+      if (!handle.$$) {
+          throwBindingError('Cannot pass "' + _embind_repr(handle) + '" as a ' + this.name);
+      }
+      if (!handle.$$.ptr) {
+          throwBindingError('Cannot pass deleted object as a pointer of type ' + this.name);
+      }
+      var handleClass = handle.$$.ptrType.registeredClass;
+      var ptr = upcastPointer(handle.$$.ptr, handleClass, this.registeredClass);
+      return ptr;
+    }
+  
+  function genericPointerToWireType(destructors, handle) {
+      var ptr;
+      if (handle === null) {
+          if (this.isReference) {
+              throwBindingError('null is not a valid ' + this.name);
+          }
+  
+          if (this.isSmartPointer) {
+              ptr = this.rawConstructor();
+              if (destructors !== null) {
+                  destructors.push(this.rawDestructor, ptr);
+              }
+              return ptr;
+          } else {
+              return 0;
+          }
+      }
+  
+      if (!handle.$$) {
+          throwBindingError('Cannot pass "' + _embind_repr(handle) + '" as a ' + this.name);
+      }
+      if (!handle.$$.ptr) {
+          throwBindingError('Cannot pass deleted object as a pointer of type ' + this.name);
+      }
+      if (!this.isConst && handle.$$.ptrType.isConst) {
+          throwBindingError('Cannot convert argument of type ' + (handle.$$.smartPtrType ? handle.$$.smartPtrType.name : handle.$$.ptrType.name) + ' to parameter type ' + this.name);
+      }
+      var handleClass = handle.$$.ptrType.registeredClass;
+      ptr = upcastPointer(handle.$$.ptr, handleClass, this.registeredClass);
+  
+      if (this.isSmartPointer) {
+          // TODO: this is not strictly true
+          // We could support BY_EMVAL conversions from raw pointers to smart pointers
+          // because the smart pointer can hold a reference to the handle
+          if (undefined === handle.$$.smartPtr) {
+              throwBindingError('Passing raw pointer to smart pointer is illegal');
+          }
+  
+          switch (this.sharingPolicy) {
+              case 0: // NONE
+                  // no upcasting
+                  if (handle.$$.smartPtrType === this) {
+                      ptr = handle.$$.smartPtr;
+                  } else {
+                      throwBindingError('Cannot convert argument of type ' + (handle.$$.smartPtrType ? handle.$$.smartPtrType.name : handle.$$.ptrType.name) + ' to parameter type ' + this.name);
+                  }
+                  break;
+  
+              case 1: // INTRUSIVE
+                  ptr = handle.$$.smartPtr;
+                  break;
+  
+              case 2: // BY_EMVAL
+                  if (handle.$$.smartPtrType === this) {
+                      ptr = handle.$$.smartPtr;
+                  } else {
+                      var clonedHandle = handle['clone']();
+                      ptr = this.rawShare(
+                          ptr,
+                          __emval_register(function() {
+                              clonedHandle['delete']();
+                          })
+                      );
+                      if (destructors !== null) {
+                          destructors.push(this.rawDestructor, ptr);
+                      }
+                  }
+                  break;
+  
+              default:
+                  throwBindingError('Unsupporting sharing policy');
+          }
+      }
+      return ptr;
+    }
+  
+  function nonConstNoSmartPtrRawPointerToWireType(destructors, handle) {
+      if (handle === null) {
+          if (this.isReference) {
+              throwBindingError('null is not a valid ' + this.name);
+          }
+          return 0;
+      }
+  
+      if (!handle.$$) {
+          throwBindingError('Cannot pass "' + _embind_repr(handle) + '" as a ' + this.name);
+      }
+      if (!handle.$$.ptr) {
+          throwBindingError('Cannot pass deleted object as a pointer of type ' + this.name);
+      }
+      if (handle.$$.ptrType.isConst) {
+          throwBindingError('Cannot convert argument of type ' + handle.$$.ptrType.name + ' to parameter type ' + this.name);
+      }
+      var handleClass = handle.$$.ptrType.registeredClass;
+      var ptr = upcastPointer(handle.$$.ptr, handleClass, this.registeredClass);
+      return ptr;
     }
   
   function simpleReadValueFromPointer(pointer) {
       return this['fromWireType'](HEAPU32[pointer >> 2]);
     }
-  function __embind_register_emval(rawType, name) {
-      name = readLatin1String(name);
-      registerType(rawType, {
-          name: name,
-          'fromWireType': function(handle) {
-              var rv = emval_handle_array[handle].value;
-              __emval_decref(handle);
-              return rv;
-          },
-          'toWireType': function(destructors, value) {
-              return __emval_register(value);
-          },
-          'argPackAdvance': 8,
-          'readValueFromPointer': simpleReadValueFromPointer,
-          destructorFunction: null, // This type does not need a destructor
   
-          // TODO: do we need a deleteObject here?  write a test where
-          // emval is passed into JS via an interface
+  function RegisteredPointer_getPointee(ptr) {
+      if (this.rawGetPointee) {
+          ptr = this.rawGetPointee(ptr);
+      }
+      return ptr;
+    }
+  
+  function RegisteredPointer_destructor(ptr) {
+      if (this.rawDestructor) {
+          this.rawDestructor(ptr);
+      }
+    }
+  
+  function RegisteredPointer_deleteObject(handle) {
+      if (handle !== null) {
+          handle['delete']();
+      }
+    }
+  
+  function downcastPointer(ptr, ptrClass, desiredClass) {
+      if (ptrClass === desiredClass) {
+          return ptr;
+      }
+      if (undefined === desiredClass.baseClass) {
+          return null; // no conversion
+      }
+  
+      var rv = downcastPointer(ptr, ptrClass, desiredClass.baseClass);
+      if (rv === null) {
+          return null;
+      }
+      return desiredClass.downcast(rv);
+    }
+  
+  function getInheritedInstanceCount() {
+      return Object.keys(registeredInstances).length;
+    }
+  
+  function getLiveInheritedInstances() {
+      var rv = [];
+      for (var k in registeredInstances) {
+          if (registeredInstances.hasOwnProperty(k)) {
+              rv.push(registeredInstances[k]);
+          }
+      }
+      return rv;
+    }
+  
+  function setDelayFunction(fn) {
+      delayFunction = fn;
+      if (deletionQueue.length && delayFunction) {
+          delayFunction(flushPendingDeletes);
+      }
+    }
+  function init_embind() {
+      Module['getInheritedInstanceCount'] = getInheritedInstanceCount;
+      Module['getLiveInheritedInstances'] = getLiveInheritedInstances;
+      Module['flushPendingDeletes'] = flushPendingDeletes;
+      Module['setDelayFunction'] = setDelayFunction;
+    }
+  var registeredInstances={};
+  
+  function getBasestPointer(class_, ptr) {
+      if (ptr === undefined) {
+          throwBindingError('ptr should not be undefined');
+      }
+      while (class_.baseClass) {
+          ptr = class_.upcast(ptr);
+          class_ = class_.baseClass;
+      }
+      return ptr;
+    }
+  function getInheritedInstance(class_, ptr) {
+      ptr = getBasestPointer(class_, ptr);
+      return registeredInstances[ptr];
+    }
+  
+  function makeClassHandle(prototype, record) {
+      if (!record.ptrType || !record.ptr) {
+          throwInternalError('makeClassHandle requires ptr and ptrType');
+      }
+      var hasSmartPtrType = !!record.smartPtrType;
+      var hasSmartPtr = !!record.smartPtr;
+      if (hasSmartPtrType !== hasSmartPtr) {
+          throwInternalError('Both smartPtrType and smartPtr must be specified');
+      }
+      record.count = { value: 1 };
+      return attachFinalizer(Object.create(prototype, {
+          $$: {
+              value: record,
+          },
+      }));
+    }
+  function RegisteredPointer_fromWireType(ptr) {
+      // ptr is a raw pointer (or a raw smartpointer)
+  
+      // rawPointer is a maybe-null raw pointer
+      var rawPointer = this.getPointee(ptr);
+      if (!rawPointer) {
+          this.destructor(ptr);
+          return null;
+      }
+  
+      var registeredInstance = getInheritedInstance(this.registeredClass, rawPointer);
+      if (undefined !== registeredInstance) {
+          // JS object has been neutered, time to repopulate it
+          if (0 === registeredInstance.$$.count.value) {
+              registeredInstance.$$.ptr = rawPointer;
+              registeredInstance.$$.smartPtr = ptr;
+              return registeredInstance['clone']();
+          } else {
+              // else, just increment reference count on existing object
+              // it already has a reference to the smart pointer
+              var rv = registeredInstance['clone']();
+              this.destructor(ptr);
+              return rv;
+          }
+      }
+  
+      function makeDefaultHandle() {
+          if (this.isSmartPointer) {
+              return makeClassHandle(this.registeredClass.instancePrototype, {
+                  ptrType: this.pointeeType,
+                  ptr: rawPointer,
+                  smartPtrType: this,
+                  smartPtr: ptr,
+              });
+          } else {
+              return makeClassHandle(this.registeredClass.instancePrototype, {
+                  ptrType: this,
+                  ptr: ptr,
+              });
+          }
+      }
+  
+      var actualType = this.registeredClass.getActualType(rawPointer);
+      var registeredPointerRecord = registeredPointers[actualType];
+      if (!registeredPointerRecord) {
+          return makeDefaultHandle.call(this);
+      }
+  
+      var toType;
+      if (this.isConst) {
+          toType = registeredPointerRecord.constPointerType;
+      } else {
+          toType = registeredPointerRecord.pointerType;
+      }
+      var dp = downcastPointer(
+          rawPointer,
+          this.registeredClass,
+          toType.registeredClass);
+      if (dp === null) {
+          return makeDefaultHandle.call(this);
+      }
+      if (this.isSmartPointer) {
+          return makeClassHandle(toType.registeredClass.instancePrototype, {
+              ptrType: toType,
+              ptr: dp,
+              smartPtrType: this,
+              smartPtr: ptr,
+          });
+      } else {
+          return makeClassHandle(toType.registeredClass.instancePrototype, {
+              ptrType: toType,
+              ptr: dp,
+          });
+      }
+    }
+  function init_RegisteredPointer() {
+      RegisteredPointer.prototype.getPointee = RegisteredPointer_getPointee;
+      RegisteredPointer.prototype.destructor = RegisteredPointer_destructor;
+      RegisteredPointer.prototype['argPackAdvance'] = 8;
+      RegisteredPointer.prototype['readValueFromPointer'] = simpleReadValueFromPointer;
+      RegisteredPointer.prototype['deleteObject'] = RegisteredPointer_deleteObject;
+      RegisteredPointer.prototype['fromWireType'] = RegisteredPointer_fromWireType;
+    }
+  /** @constructor
+      @param {*=} pointeeType,
+      @param {*=} sharingPolicy,
+      @param {*=} rawGetPointee,
+      @param {*=} rawConstructor,
+      @param {*=} rawShare,
+      @param {*=} rawDestructor,
+       */
+  function RegisteredPointer(
+      name,
+      registeredClass,
+      isReference,
+      isConst,
+  
+      // smart pointer properties
+      isSmartPointer,
+      pointeeType,
+      sharingPolicy,
+      rawGetPointee,
+      rawConstructor,
+      rawShare,
+      rawDestructor
+    ) {
+      this.name = name;
+      this.registeredClass = registeredClass;
+      this.isReference = isReference;
+      this.isConst = isConst;
+  
+      // smart pointer properties
+      this.isSmartPointer = isSmartPointer;
+      this.pointeeType = pointeeType;
+      this.sharingPolicy = sharingPolicy;
+      this.rawGetPointee = rawGetPointee;
+      this.rawConstructor = rawConstructor;
+      this.rawShare = rawShare;
+      this.rawDestructor = rawDestructor;
+  
+      if (!isSmartPointer && registeredClass.baseClass === undefined) {
+          if (isConst) {
+              this['toWireType'] = constNoSmartPtrRawPointerToWireType;
+              this.destructorFunction = null;
+          } else {
+              this['toWireType'] = nonConstNoSmartPtrRawPointerToWireType;
+              this.destructorFunction = null;
+          }
+      } else {
+          this['toWireType'] = genericPointerToWireType;
+          // Here we must leave this.destructorFunction undefined, since whether genericPointerToWireType returns
+          // a pointer that needs to be freed up is runtime-dependent, and cannot be evaluated at registration time.
+          // TODO: Create an alternative mechanism that allows removing the use of var destructors = []; array in
+          //       craftInvokerFunction altogether.
+      }
+    }
+  
+  /** @param {number=} numArguments */
+  function replacePublicSymbol(name, value, numArguments) {
+      if (!Module.hasOwnProperty(name)) {
+          throwInternalError('Replacing nonexistant public symbol');
+      }
+      // If there's an overload table for this symbol, replace the symbol in the overload table instead.
+      if (undefined !== Module[name].overloadTable && undefined !== numArguments) {
+          Module[name].overloadTable[numArguments] = value;
+      }
+      else {
+          Module[name] = value;
+          Module[name].argCount = numArguments;
+      }
+    }
+  
+  function dynCallLegacy(sig, ptr, args) {
+      assert(('dynCall_' + sig) in Module, 'bad function pointer type - no table for sig \'' + sig + '\'');
+      if (args && args.length) {
+        // j (64-bit integer) must be passed in as two numbers [low 32, high 32].
+        assert(args.length === sig.substring(1).replace(/j/g, '--').length);
+      } else {
+        assert(sig.length == 1);
+      }
+      var f = Module["dynCall_" + sig];
+      return args && args.length ? f.apply(null, [ptr].concat(args)) : f.call(null, ptr);
+    }
+  function dynCall(sig, ptr, args) {
+      // Without WASM_BIGINT support we cannot directly call function with i64 as
+      // part of thier signature, so we rely the dynCall functions generated by
+      // wasm-emscripten-finalize
+      if (sig.indexOf('j') != -1) {
+        return dynCallLegacy(sig, ptr, args);
+      }
+      assert(wasmTable.get(ptr), 'missing table entry in dynCall: ' + ptr);
+      return wasmTable.get(ptr).apply(null, args)
+    }
+  function getDynCaller(sig, ptr) {
+      assert(sig.indexOf('j') >= 0, 'getDynCaller should only be called with i64 sigs')
+      var argCache = [];
+      return function() {
+        argCache.length = arguments.length;
+        for (var i = 0; i < arguments.length; i++) {
+          argCache[i] = arguments[i];
+        }
+        return dynCall(sig, ptr, argCache);
+      };
+    }
+  function embind__requireFunction(signature, rawFunction) {
+      signature = readLatin1String(signature);
+  
+      function makeDynCaller() {
+        if (signature.indexOf('j') != -1) {
+          return getDynCaller(signature, rawFunction);
+        }
+        return wasmTable.get(rawFunction);
+      }
+  
+      var fp = makeDynCaller();
+      if (typeof fp !== "function") {
+          throwBindingError("unknown function pointer with signature " + signature + ": " + rawFunction);
+      }
+      return fp;
+    }
+  
+  var UnboundTypeError=undefined;
+  
+  function getTypeName(type) {
+      var ptr = ___getTypeName(type);
+      var rv = readLatin1String(ptr);
+      _free(ptr);
+      return rv;
+    }
+  function throwUnboundTypeError(message, types) {
+      var unboundTypes = [];
+      var seen = {};
+      function visit(type) {
+          if (seen[type]) {
+              return;
+          }
+          if (registeredTypes[type]) {
+              return;
+          }
+          if (typeDependencies[type]) {
+              typeDependencies[type].forEach(visit);
+              return;
+          }
+          unboundTypes.push(type);
+          seen[type] = true;
+      }
+      types.forEach(visit);
+  
+      throw new UnboundTypeError(message + ': ' + unboundTypes.map(getTypeName).join([', ']));
+    }
+  function __embind_register_class(
+      rawType,
+      rawPointerType,
+      rawConstPointerType,
+      baseClassRawType,
+      getActualTypeSignature,
+      getActualType,
+      upcastSignature,
+      upcast,
+      downcastSignature,
+      downcast,
+      name,
+      destructorSignature,
+      rawDestructor
+    ) {
+      name = readLatin1String(name);
+      getActualType = embind__requireFunction(getActualTypeSignature, getActualType);
+      if (upcast) {
+          upcast = embind__requireFunction(upcastSignature, upcast);
+      }
+      if (downcast) {
+          downcast = embind__requireFunction(downcastSignature, downcast);
+      }
+      rawDestructor = embind__requireFunction(destructorSignature, rawDestructor);
+      var legalFunctionName = makeLegalFunctionName(name);
+  
+      exposePublicSymbol(legalFunctionName, function() {
+          // this code cannot run if baseClassRawType is zero
+          throwUnboundTypeError('Cannot construct ' + name + ' due to unbound types', [baseClassRawType]);
       });
+  
+      whenDependentTypesAreResolved(
+          [rawType, rawPointerType, rawConstPointerType],
+          baseClassRawType ? [baseClassRawType] : [],
+          function(base) {
+              base = base[0];
+  
+              var baseClass;
+              var basePrototype;
+              if (baseClassRawType) {
+                  baseClass = base.registeredClass;
+                  basePrototype = baseClass.instancePrototype;
+              } else {
+                  basePrototype = ClassHandle.prototype;
+              }
+  
+              var constructor = createNamedFunction(legalFunctionName, function() {
+                  if (Object.getPrototypeOf(this) !== instancePrototype) {
+                      throw new BindingError("Use 'new' to construct " + name);
+                  }
+                  if (undefined === registeredClass.constructor_body) {
+                      throw new BindingError(name + " has no accessible constructor");
+                  }
+                  var body = registeredClass.constructor_body[arguments.length];
+                  if (undefined === body) {
+                      throw new BindingError("Tried to invoke ctor of " + name + " with invalid number of parameters (" + arguments.length + ") - expected (" + Object.keys(registeredClass.constructor_body).toString() + ") parameters instead!");
+                  }
+                  return body.apply(this, arguments);
+              });
+  
+              var instancePrototype = Object.create(basePrototype, {
+                  constructor: { value: constructor },
+              });
+  
+              constructor.prototype = instancePrototype;
+  
+              var registeredClass = new RegisteredClass(
+                  name,
+                  constructor,
+                  instancePrototype,
+                  rawDestructor,
+                  baseClass,
+                  getActualType,
+                  upcast,
+                  downcast);
+  
+              var referenceConverter = new RegisteredPointer(
+                  name,
+                  registeredClass,
+                  true,
+                  false,
+                  false);
+  
+              var pointerConverter = new RegisteredPointer(
+                  name + '*',
+                  registeredClass,
+                  false,
+                  false,
+                  false);
+  
+              var constPointerConverter = new RegisteredPointer(
+                  name + ' const*',
+                  registeredClass,
+                  false,
+                  true,
+                  false);
+  
+              registeredPointers[rawType] = {
+                  pointerType: pointerConverter,
+                  constPointerType: constPointerConverter
+              };
+  
+              replacePublicSymbol(legalFunctionName, constructor);
+  
+              return [referenceConverter, pointerConverter, constPointerConverter];
+          }
+      );
     }
 
-  function _embind_repr(v) {
-      if (v === null) {
-          return 'null';
+  function heap32VectorToArray(count, firstElement) {
+      var array = [];
+      for (var i = 0; i < count; i++) {
+          array.push(HEAP32[(firstElement >> 2) + i]);
       }
-      var t = typeof v;
-      if (t === 'object' || t === 'array' || t === 'function') {
-          return v.toString();
-      } else {
-          return '' + v;
-      }
+      return array;
     }
   
-  function floatReadValueFromPointer(name, shift) {
-      switch (shift) {
-          case 2: return function(pointer) {
-              return this['fromWireType'](HEAPF32[pointer >> 2]);
-          };
-          case 3: return function(pointer) {
-              return this['fromWireType'](HEAPF64[pointer >> 3]);
-          };
-          default:
-              throw new TypeError("Unknown float type: " + name);
+  function runDestructors(destructors) {
+      while (destructors.length) {
+          var ptr = destructors.pop();
+          var del = destructors.pop();
+          del(ptr);
       }
     }
-  function __embind_register_float(rawType, name, size) {
-      var shift = getShiftFromSize(size);
-      name = readLatin1String(name);
-      registerType(rawType, {
-          name: name,
-          'fromWireType': function(value) {
-              return value;
-          },
-          'toWireType': function(destructors, value) {
-              // todo: Here we have an opportunity for -O3 level "unsafe" optimizations: we could
-              // avoid the following if() and assume value is of proper type.
-              if (typeof value !== "number" && typeof value !== "boolean") {
-                  throw new TypeError('Cannot convert "' + _embind_repr(value) + '" to ' + this.name);
-              }
-              return value;
-          },
-          'argPackAdvance': 8,
-          'readValueFromPointer': floatReadValueFromPointer(name, shift),
-          destructorFunction: null, // This type does not need a destructor
+  function __embind_register_class_constructor(
+      rawClassType,
+      argCount,
+      rawArgTypesAddr,
+      invokerSignature,
+      invoker,
+      rawConstructor
+    ) {
+      assert(argCount > 0);
+      var rawArgTypes = heap32VectorToArray(argCount, rawArgTypesAddr);
+      invoker = embind__requireFunction(invokerSignature, invoker);
+      var args = [rawConstructor];
+      var destructors = [];
+  
+      whenDependentTypesAreResolved([], [rawClassType], function(classType) {
+          classType = classType[0];
+          var humanName = 'constructor ' + classType.name;
+  
+          if (undefined === classType.registeredClass.constructor_body) {
+              classType.registeredClass.constructor_body = [];
+          }
+          if (undefined !== classType.registeredClass.constructor_body[argCount - 1]) {
+              throw new BindingError("Cannot register multiple constructors with identical number of parameters (" + (argCount-1) + ") for class '" + classType.name + "'! Overload resolution is currently only performed using the parameter count, not actual type info!");
+          }
+          classType.registeredClass.constructor_body[argCount - 1] = function unboundTypeHandler() {
+              throwUnboundTypeError('Cannot construct ' + classType.name + ' due to unbound types', rawArgTypes);
+          };
+  
+          whenDependentTypesAreResolved([], rawArgTypes, function(argTypes) {
+              classType.registeredClass.constructor_body[argCount - 1] = function constructor_body() {
+                  if (arguments.length !== argCount - 1) {
+                      throwBindingError(humanName + ' called with ' + arguments.length + ' arguments, expected ' + (argCount-1));
+                  }
+                  destructors.length = 0;
+                  args.length = argCount;
+                  for (var i = 1; i < argCount; ++i) {
+                      args[i] = argTypes[i]['toWireType'](destructors, arguments[i - 1]);
+                  }
+  
+                  var ptr = invoker.apply(null, args);
+                  runDestructors(destructors);
+  
+                  return argTypes[0]['fromWireType'](ptr);
+              };
+              return [];
+          });
+          return [];
       });
     }
 
@@ -4723,14 +5554,6 @@ var ASM_CONSTS = {
   
       var r = constructor.apply(obj, argumentList);
       return (r instanceof Object) ? r : obj;
-    }
-  
-  function runDestructors(destructors) {
-      while (destructors.length) {
-          var ptr = destructors.pop();
-          var del = destructors.pop();
-          del(ptr);
-      }
     }
   function craftInvokerFunction(humanName, argTypes, classType, cppInvokerFunc, cppTargetFunc) {
       // humanName: a human-readable string name for the function to be generated.
@@ -4832,148 +5655,181 @@ var ASM_CONSTS = {
       var invokerFunction = new_(Function, args1).apply(null, args2);
       return invokerFunction;
     }
+  function __embind_register_class_function(
+      rawClassType,
+      methodName,
+      argCount,
+      rawArgTypesAddr, // [ReturnType, ThisType, Args...]
+      invokerSignature,
+      rawInvoker,
+      context,
+      isPureVirtual
+    ) {
+      var rawArgTypes = heap32VectorToArray(argCount, rawArgTypesAddr);
+      methodName = readLatin1String(methodName);
+      rawInvoker = embind__requireFunction(invokerSignature, rawInvoker);
   
-  function ensureOverloadTable(proto, methodName, humanName) {
-      if (undefined === proto[methodName].overloadTable) {
-          var prevFunc = proto[methodName];
-          // Inject an overload resolver function that routes to the appropriate overload based on the number of arguments.
-          proto[methodName] = function() {
-              // TODO This check can be removed in -O3 level "unsafe" optimizations.
-              if (!proto[methodName].overloadTable.hasOwnProperty(arguments.length)) {
-                  throwBindingError("Function '" + humanName + "' called with an invalid number of arguments (" + arguments.length + ") - expects one of (" + proto[methodName].overloadTable + ")!");
+      whenDependentTypesAreResolved([], [rawClassType], function(classType) {
+          classType = classType[0];
+          var humanName = classType.name + '.' + methodName;
+  
+          if (isPureVirtual) {
+              classType.registeredClass.pureVirtualFunctions.push(methodName);
+          }
+  
+          function unboundTypesHandler() {
+              throwUnboundTypeError('Cannot call ' + humanName + ' due to unbound types', rawArgTypes);
+          }
+  
+          var proto = classType.registeredClass.instancePrototype;
+          var method = proto[methodName];
+          if (undefined === method || (undefined === method.overloadTable && method.className !== classType.name && method.argCount === argCount - 2)) {
+              // This is the first overload to be registered, OR we are replacing a function in the base class with a function in the derived class.
+              unboundTypesHandler.argCount = argCount - 2;
+              unboundTypesHandler.className = classType.name;
+              proto[methodName] = unboundTypesHandler;
+          } else {
+              // There was an existing function with the same name registered. Set up a function overload routing table.
+              ensureOverloadTable(proto, methodName, humanName);
+              proto[methodName].overloadTable[argCount - 2] = unboundTypesHandler;
+          }
+  
+          whenDependentTypesAreResolved([], rawArgTypes, function(argTypes) {
+  
+              var memberFunction = craftInvokerFunction(humanName, argTypes, classType, rawInvoker, context);
+  
+              // Replace the initial unbound-handler-stub function with the appropriate member function, now that all types
+              // are resolved. If multiple overloads are registered for this function, the function goes into an overload table.
+              if (undefined === proto[methodName].overloadTable) {
+                  // Set argCount in case an overload is registered later
+                  memberFunction.argCount = argCount - 2;
+                  proto[methodName] = memberFunction;
+              } else {
+                  proto[methodName].overloadTable[argCount - 2] = memberFunction;
               }
-              return proto[methodName].overloadTable[arguments.length].apply(this, arguments);
-          };
-          // Move the previous function into the overload table.
-          proto[methodName].overloadTable = [];
-          proto[methodName].overloadTable[prevFunc.argCount] = prevFunc;
+  
+              return [];
+          });
+          return [];
+      });
+    }
+
+  var emval_free_list=[];
+  
+  var emval_handle_array=[{},{value:undefined},{value:null},{value:true},{value:false}];
+  function __emval_decref(handle) {
+      if (handle > 4 && 0 === --emval_handle_array[handle].refcount) {
+          emval_handle_array[handle] = undefined;
+          emval_free_list.push(handle);
       }
     }
-  /** @param {number=} numArguments */
-  function exposePublicSymbol(name, value, numArguments) {
-      if (Module.hasOwnProperty(name)) {
-          if (undefined === numArguments || (undefined !== Module[name].overloadTable && undefined !== Module[name].overloadTable[numArguments])) {
-              throwBindingError("Cannot register public name '" + name + "' twice");
-          }
   
-          // We are exposing a function with the same name as an existing function. Create an overload table and a function selector
-          // that routes between the two.
-          ensureOverloadTable(Module, name, name);
-          if (Module.hasOwnProperty(numArguments)) {
-              throwBindingError("Cannot register multiple overloads of a function with the same number of arguments (" + numArguments + ")!");
-          }
-          // Add the new function into the overload table.
-          Module[name].overloadTable[numArguments] = value;
-      }
-      else {
-          Module[name] = value;
-          if (undefined !== numArguments) {
-              Module[name].numArguments = numArguments;
+  function count_emval_handles() {
+      var count = 0;
+      for (var i = 5; i < emval_handle_array.length; ++i) {
+          if (emval_handle_array[i] !== undefined) {
+              ++count;
           }
       }
+      return count;
     }
   
-  function heap32VectorToArray(count, firstElement) {
-      var array = [];
-      for (var i = 0; i < count; i++) {
-          array.push(HEAP32[(firstElement >> 2) + i]);
+  function get_first_emval() {
+      for (var i = 5; i < emval_handle_array.length; ++i) {
+          if (emval_handle_array[i] !== undefined) {
+              return emval_handle_array[i];
+          }
       }
-      return array;
+      return null;
     }
-  
-  /** @param {number=} numArguments */
-  function replacePublicSymbol(name, value, numArguments) {
-      if (!Module.hasOwnProperty(name)) {
-          throwInternalError('Replacing nonexistant public symbol');
-      }
-      // If there's an overload table for this symbol, replace the symbol in the overload table instead.
-      if (undefined !== Module[name].overloadTable && undefined !== numArguments) {
-          Module[name].overloadTable[numArguments] = value;
-      }
-      else {
-          Module[name] = value;
-          Module[name].argCount = numArguments;
-      }
+  function init_emval() {
+      Module['count_emval_handles'] = count_emval_handles;
+      Module['get_first_emval'] = get_first_emval;
     }
+  function __emval_register(value) {
   
-  function dynCallLegacy(sig, ptr, args) {
-      assert(('dynCall_' + sig) in Module, 'bad function pointer type - no table for sig \'' + sig + '\'');
-      if (args && args.length) {
-        // j (64-bit integer) must be passed in as two numbers [low 32, high 32].
-        assert(args.length === sig.substring(1).replace(/j/g, '--').length);
+      switch(value){
+        case undefined :{ return 1; }
+        case null :{ return 2; }
+        case true :{ return 3; }
+        case false :{ return 4; }
+        default:{
+          var handle = emval_free_list.length ?
+              emval_free_list.pop() :
+              emval_handle_array.length;
+  
+          emval_handle_array[handle] = {refcount: 1, value: value};
+          return handle;
+          }
+        }
+    }
+  function __embind_register_emval(rawType, name) {
+      name = readLatin1String(name);
+      registerType(rawType, {
+          name: name,
+          'fromWireType': function(handle) {
+              var rv = emval_handle_array[handle].value;
+              __emval_decref(handle);
+              return rv;
+          },
+          'toWireType': function(destructors, value) {
+              return __emval_register(value);
+          },
+          'argPackAdvance': 8,
+          'readValueFromPointer': simpleReadValueFromPointer,
+          destructorFunction: null, // This type does not need a destructor
+  
+          // TODO: do we need a deleteObject here?  write a test where
+          // emval is passed into JS via an interface
+      });
+    }
+
+  function _embind_repr(v) {
+      if (v === null) {
+          return 'null';
+      }
+      var t = typeof v;
+      if (t === 'object' || t === 'array' || t === 'function') {
+          return v.toString();
       } else {
-        assert(sig.length == 1);
+          return '' + v;
       }
-      var f = Module["dynCall_" + sig];
-      return args && args.length ? f.apply(null, [ptr].concat(args)) : f.call(null, ptr);
-    }
-  function dynCall(sig, ptr, args) {
-      // Without WASM_BIGINT support we cannot directly call function with i64 as
-      // part of thier signature, so we rely the dynCall functions generated by
-      // wasm-emscripten-finalize
-      if (sig.indexOf('j') != -1) {
-        return dynCallLegacy(sig, ptr, args);
-      }
-      assert(wasmTable.get(ptr), 'missing table entry in dynCall: ' + ptr);
-      return wasmTable.get(ptr).apply(null, args)
-    }
-  function getDynCaller(sig, ptr) {
-      assert(sig.indexOf('j') >= 0, 'getDynCaller should only be called with i64 sigs')
-      var argCache = [];
-      return function() {
-        argCache.length = arguments.length;
-        for (var i = 0; i < arguments.length; i++) {
-          argCache[i] = arguments[i];
-        }
-        return dynCall(sig, ptr, argCache);
-      };
-    }
-  function embind__requireFunction(signature, rawFunction) {
-      signature = readLatin1String(signature);
-  
-      function makeDynCaller() {
-        if (signature.indexOf('j') != -1) {
-          return getDynCaller(signature, rawFunction);
-        }
-        return wasmTable.get(rawFunction);
-      }
-  
-      var fp = makeDynCaller();
-      if (typeof fp !== "function") {
-          throwBindingError("unknown function pointer with signature " + signature + ": " + rawFunction);
-      }
-      return fp;
     }
   
-  var UnboundTypeError=undefined;
-  
-  function getTypeName(type) {
-      var ptr = ___getTypeName(type);
-      var rv = readLatin1String(ptr);
-      _free(ptr);
-      return rv;
-    }
-  function throwUnboundTypeError(message, types) {
-      var unboundTypes = [];
-      var seen = {};
-      function visit(type) {
-          if (seen[type]) {
-              return;
-          }
-          if (registeredTypes[type]) {
-              return;
-          }
-          if (typeDependencies[type]) {
-              typeDependencies[type].forEach(visit);
-              return;
-          }
-          unboundTypes.push(type);
-          seen[type] = true;
+  function floatReadValueFromPointer(name, shift) {
+      switch (shift) {
+          case 2: return function(pointer) {
+              return this['fromWireType'](HEAPF32[pointer >> 2]);
+          };
+          case 3: return function(pointer) {
+              return this['fromWireType'](HEAPF64[pointer >> 3]);
+          };
+          default:
+              throw new TypeError("Unknown float type: " + name);
       }
-      types.forEach(visit);
-  
-      throw new UnboundTypeError(message + ': ' + unboundTypes.map(getTypeName).join([', ']));
     }
+  function __embind_register_float(rawType, name, size) {
+      var shift = getShiftFromSize(size);
+      name = readLatin1String(name);
+      registerType(rawType, {
+          name: name,
+          'fromWireType': function(value) {
+              return value;
+          },
+          'toWireType': function(destructors, value) {
+              // todo: Here we have an opportunity for -O3 level "unsafe" optimizations: we could
+              // avoid the following if() and assume value is of proper type.
+              if (typeof value !== "number" && typeof value !== "boolean") {
+                  throw new TypeError('Cannot convert "' + _embind_repr(value) + '" to ' + this.name);
+              }
+              return value;
+          },
+          'argPackAdvance': 8,
+          'readValueFromPointer': floatReadValueFromPointer(name, shift),
+          destructorFunction: null, // This type does not need a destructor
+      });
+    }
+
   function __embind_register_function(name, argCount, rawArgTypesAddr, signature, rawInvoker, fn) {
       var argTypes = heap32VectorToArray(argCount, rawArgTypesAddr);
       name = readLatin1String(name);
@@ -5257,6 +6113,26 @@ var ASM_CONSTS = {
       });
     }
 
+
+  function __emval_incref(handle) {
+      if (handle > 4) {
+          emval_handle_array[handle].refcount += 1;
+      }
+    }
+
+  function requireRegisteredType(rawType, humanName) {
+      var impl = registeredTypes[rawType];
+      if (undefined === impl) {
+          throwBindingError(humanName + " has unknown type " + getTypeName(rawType));
+      }
+      return impl;
+    }
+  function __emval_take_value(type, argv) {
+      type = requireRegisteredType(type, '_emval_take_value');
+      var v = type['readValueFromPointer'](argv);
+      return __emval_register(v);
+    }
+
   function _abort() {
       abort();
     }
@@ -5269,11 +6145,61 @@ var ASM_CONSTS = {
       return HEAPU8.length;
     }
   
-  function abortOnCannotGrowMemory(requestedSize) {
-      abort('Cannot enlarge memory arrays to size ' + requestedSize + ' bytes (OOM). Either (1) compile with  -s INITIAL_MEMORY=X  with X higher than the current value ' + HEAP8.length + ', (2) compile with  -s ALLOW_MEMORY_GROWTH=1  which allows increasing the size at runtime, or (3) if you want malloc to return NULL (0) instead of this abort, compile with  -s ABORTING_MALLOC=0 ');
+  function emscripten_realloc_buffer(size) {
+      try {
+        // round size grow request up to wasm page size (fixed 64KB per spec)
+        wasmMemory.grow((size - buffer.byteLength + 65535) >>> 16); // .grow() takes a delta compared to the previous size
+        updateGlobalBufferAndViews(wasmMemory.buffer);
+        return 1 /*success*/;
+      } catch(e) {
+        console.error('emscripten_realloc_buffer: Attempted to grow heap from ' + buffer.byteLength  + ' bytes to ' + size + ' bytes, but got error: ' + e);
+      }
+      // implicit 0 return to save code size (caller will cast "undefined" into 0
+      // anyhow)
     }
   function _emscripten_resize_heap(requestedSize) {
-      abortOnCannotGrowMemory(requestedSize);
+      var oldSize = _emscripten_get_heap_size();
+      // With pthreads, races can happen (another thread might increase the size in between), so return a failure, and let the caller retry.
+      assert(requestedSize > oldSize);
+  
+      // Memory resize rules:
+      // 1. Always increase heap size to at least the requested size, rounded up to next page multiple.
+      // 2a. If MEMORY_GROWTH_LINEAR_STEP == -1, excessively resize the heap geometrically: increase the heap size according to 
+      //                                         MEMORY_GROWTH_GEOMETRIC_STEP factor (default +20%),
+      //                                         At most overreserve by MEMORY_GROWTH_GEOMETRIC_CAP bytes (default 96MB).
+      // 2b. If MEMORY_GROWTH_LINEAR_STEP != -1, excessively resize the heap linearly: increase the heap size by at least MEMORY_GROWTH_LINEAR_STEP bytes.
+      // 3. Max size for the heap is capped at 2048MB-WASM_PAGE_SIZE, or by MAXIMUM_MEMORY, or by ASAN limit, depending on which is smallest
+      // 4. If we were unable to allocate as much memory, it may be due to over-eager decision to excessively reserve due to (3) above.
+      //    Hence if an allocation fails, cut down on the amount of excess growth, in an attempt to succeed to perform a smaller allocation.
+  
+      // A limit was set for how much we can grow. We should not exceed that
+      // (the wasm binary specifies it, so if we tried, we'd fail anyhow).
+      // In CAN_ADDRESS_2GB mode, stay one Wasm page short of 4GB: while e.g. Chrome is able to allocate full 4GB Wasm memories, the size will wrap
+      // back to 0 bytes in Wasm side for any code that deals with heap sizes, which would require special casing all heap size related code to treat
+      // 0 specially.
+      var maxHeapSize = 2147483648;
+      if (requestedSize > maxHeapSize) {
+        err('Cannot enlarge memory, asked to go up to ' + requestedSize + ' bytes, but the limit is ' + maxHeapSize + ' bytes!');
+        return false;
+      }
+  
+      // Loop through potential heap size increases. If we attempt a too eager reservation that fails, cut down on the
+      // attempted size and reserve a smaller bump instead. (max 3 times, chosen somewhat arbitrarily)
+      for(var cutDown = 1; cutDown <= 4; cutDown *= 2) {
+        var overGrownHeapSize = oldSize * (1 + 0.2 / cutDown); // ensure geometric growth
+        // but limit overreserving (default to capping at +96MB overgrowth at most)
+        overGrownHeapSize = Math.min(overGrownHeapSize, requestedSize + 100663296 );
+  
+        var newSize = Math.min(maxHeapSize, alignUp(Math.max(requestedSize, overGrownHeapSize), 65536));
+  
+        var replacement = emscripten_realloc_buffer(newSize);
+        if (replacement) {
+  
+          return true;
+        }
+      }
+      err('Failed to grow the heap from ' + oldSize + ' bytes to ' + newSize + ' bytes, not enough memory!');
+      return false;
     }
 
   var ENV={};
@@ -5812,8 +6738,11 @@ var FSNode = /** @constructor */ function(parent, name, mode, rdev) {
 embind_init_charCodes();
 BindingError = Module['BindingError'] = extendError(Error, 'BindingError');;
 InternalError = Module['InternalError'] = extendError(Error, 'InternalError');;
-init_emval();;
+init_ClassHandle();
+init_RegisteredPointer();
+init_embind();;
 UnboundTypeError = Module['UnboundTypeError'] = extendError(Error, 'UnboundTypeError');;
+init_emval();;
 var ASSERTIONS = true;
 
 
@@ -5844,11 +6773,16 @@ function intArrayToString(array) {
 
 
 var asmLibraryArg = {
+  "__cxa_allocate_exception": ___cxa_allocate_exception,
   "__cxa_atexit": ___cxa_atexit,
+  "__cxa_throw": ___cxa_throw,
   "__sys_fcntl64": ___sys_fcntl64,
   "__sys_ioctl": ___sys_ioctl,
   "__sys_open": ___sys_open,
   "_embind_register_bool": __embind_register_bool,
+  "_embind_register_class": __embind_register_class,
+  "_embind_register_class_constructor": __embind_register_class_constructor,
+  "_embind_register_class_function": __embind_register_class_function,
   "_embind_register_emval": __embind_register_emval,
   "_embind_register_float": __embind_register_float,
   "_embind_register_function": __embind_register_function,
@@ -5857,6 +6791,9 @@ var asmLibraryArg = {
   "_embind_register_std_string": __embind_register_std_string,
   "_embind_register_std_wstring": __embind_register_std_wstring,
   "_embind_register_void": __embind_register_void,
+  "_emval_decref": __emval_decref,
+  "_emval_incref": __emval_incref,
+  "_emval_take_value": __emval_take_value,
   "abort": _abort,
   "emscripten_memcpy_big": _emscripten_memcpy_big,
   "emscripten_resize_heap": _emscripten_resize_heap,
@@ -5914,6 +6851,9 @@ var _emscripten_stack_get_free = Module["_emscripten_stack_get_free"] = function
 var _emscripten_stack_get_end = Module["_emscripten_stack_get_end"] = function() {
   return (_emscripten_stack_get_end = Module["_emscripten_stack_get_end"] = Module["asm"]["emscripten_stack_get_end"]).apply(null, arguments);
 };
+
+/** @type {function(...*):?} */
+var _setThrew = Module["_setThrew"] = createExportWrapper("setThrew");
 
 /** @type {function(...*):?} */
 var dynCall_viijii = Module["dynCall_viijii"] = createExportWrapper("dynCall_viijii");
@@ -5986,7 +6926,6 @@ if (!Object.getOwnPropertyDescriptor(Module, "callMain")) Module["callMain"] = f
 if (!Object.getOwnPropertyDescriptor(Module, "abort")) Module["abort"] = function() { abort("'abort' was not exported. add it to EXTRA_EXPORTED_RUNTIME_METHODS (see the FAQ)") };
 if (!Object.getOwnPropertyDescriptor(Module, "stringToNewUTF8")) Module["stringToNewUTF8"] = function() { abort("'stringToNewUTF8' was not exported. add it to EXTRA_EXPORTED_RUNTIME_METHODS (see the FAQ)") };
 if (!Object.getOwnPropertyDescriptor(Module, "setFileTime")) Module["setFileTime"] = function() { abort("'setFileTime' was not exported. add it to EXTRA_EXPORTED_RUNTIME_METHODS (see the FAQ)") };
-if (!Object.getOwnPropertyDescriptor(Module, "abortOnCannotGrowMemory")) Module["abortOnCannotGrowMemory"] = function() { abort("'abortOnCannotGrowMemory' was not exported. add it to EXTRA_EXPORTED_RUNTIME_METHODS (see the FAQ)") };
 if (!Object.getOwnPropertyDescriptor(Module, "emscripten_realloc_buffer")) Module["emscripten_realloc_buffer"] = function() { abort("'emscripten_realloc_buffer' was not exported. add it to EXTRA_EXPORTED_RUNTIME_METHODS (see the FAQ)") };
 if (!Object.getOwnPropertyDescriptor(Module, "ENV")) Module["ENV"] = function() { abort("'ENV' was not exported. add it to EXTRA_EXPORTED_RUNTIME_METHODS (see the FAQ)") };
 if (!Object.getOwnPropertyDescriptor(Module, "ERRNO_CODES")) Module["ERRNO_CODES"] = function() { abort("'ERRNO_CODES' was not exported. add it to EXTRA_EXPORTED_RUNTIME_METHODS (see the FAQ)") };

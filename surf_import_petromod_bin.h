@@ -37,34 +37,15 @@
 #include <vector>
 using namespace std;
 
-//storing surface meta data
-struct meta {
-    string content{};
-    int distanceUnit{};
-    int dataUnit{};
-    int ncol{};
-    int nrow{};
-    float Xstep{};
-    float Ystep{};
-    string mapType{};
-    float origX{};
-    float origY{};
-    float rotation{};
-    float rotationOrigX{};
-    float rotationOrigY{};
-    int undef{};
-    float version{};
-};
 
 //floating point precision
 float FLOATEPS{ 1.0E-05 };
 
 //read PMD
 int surf_im_petromod_bin(FILE *fc,
-    struct meta *mdata,
-    vector<double>*surfzv)
+    vector<float> *arr)
 {
-    
+  
     fseek(fc, 0, SEEK_SET);
 
     /* check endianess */
@@ -89,51 +70,42 @@ int surf_im_petromod_bin(FILE *fc,
     //parsing metadata
     istringstream stream(param);
     int i = 0;
+    int ncol, nrow, undef;
+    float Xstep, Ystep, origX, origY;
     while (stream.good()) {
         string substr;
         getline(stream, substr, '=');
         string subsubstr;
         istringstream substr_stream(substr);
         getline(substr_stream, subsubstr, ',');
-        if (i == 2) {
-            int x = stoi(subsubstr);
-            mdata->distanceUnit = x;
-        }
-        else if (i==3) {
-            int x = stoi(subsubstr);
-            mdata->dataUnit = x;
-        }
-        else if (i == 4) {
-            int x = stoi(subsubstr);
-            mdata->ncol = x;
+
+        if (i == 4) {
+            ncol = stoi(subsubstr);
+            arr->push_back((float)ncol);
         }
         else if (i == 5) {
-            int x = stoi(subsubstr);
-            mdata->nrow = x;
+            nrow = stoi(subsubstr);
+            arr->push_back((float)nrow);
         }
         else if (i == 6) {
-            float x = stoi(subsubstr);
-            mdata->Xstep = x;
+            Xstep = stoi(subsubstr);
+            arr->push_back((float)Xstep);
         }
         else if (i == 7) {
-            float x = stoi(subsubstr);
-            mdata->Ystep = x;
+            Ystep = stoi(subsubstr);
+            arr->push_back((float)Ystep);
         }
         else if (i == 9) {
-            float x = stoi(subsubstr);
-            mdata->origX = x;
+            origX = stoi(subsubstr);
+            arr->push_back((float)origX);
         }
         else if (i == 10) {
-            float x = stoi(subsubstr);
-            mdata->origY = x;
-        }
-        else if (i == 11) {
-            float x = stoi(subsubstr);
-            mdata->rotation = x;
+            origY = stoi(subsubstr);
+            arr->push_back((float)origY);
         }
         else if (i == 14) {
-            int x = stoi(subsubstr);
-            mdata->undef = x;
+            int undef = stoi(subsubstr);
+            arr->push_back((float)undef);
         }
         i++;        
     }
@@ -143,36 +115,40 @@ int surf_im_petromod_bin(FILE *fc,
     fseek(fc, nlen+5, SEEK_SET);
 
 
-    int result = 0;
+    int count = 0;
     //Parse data into vector
     int in{ 0 }, jn{ 0 };
     long ic{0};
     //ncol = no of X
+
+    int nnode = 6;
     if (swap) {
-        for (in = 0; in < mdata->ncol; in++) {
-            for (jn = 0; jn < mdata->nrow; jn++) {
+        for (in = 0; in < ncol; in++) {
+            for (jn = 0; jn < nrow; jn++) {
                 fread(&myfloat, 4, 1, fc);
                 SWAP_FLOAT(myfloat);
-                if (fabs(myfloat - mdata->undef) < FLOATEPS) {
-                    myfloat = mdata->undef;
+                if (fabs(myfloat - undef) < FLOATEPS) {
+                    myfloat = undef;
                 }
-                //surfzv->push_back((double)myfloat);
-                result += 1;
+                arr->push_back(myfloat);
+                nnode += 1;
+                count += 1;
             }
         }
     }
     else {
-        for (in = 0; in < mdata->ncol; in++) {
-            for (jn = 0; jn < mdata->nrow; jn++) {
+        for (in = 0; in < ncol; in++) {
+            for (jn = 0; jn < nrow; jn++) {
                 fread(&myfloat, 4, 1, fc);
-                if (fabs(myfloat - mdata->undef) < FLOATEPS) {
-                    myfloat = mdata->undef;
+                if (fabs(myfloat - undef) < FLOATEPS) {
+                    myfloat = undef;
                 }
-                //surfzv->push_back((double)myfloat);
-                result += 1;
+                arr->push_back(myfloat);
+                nnode += 1;
+                count += 1;
             }
         }
     }
 
-    return result;
+    return nnode;
 }

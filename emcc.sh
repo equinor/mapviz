@@ -1,1 +1,1 @@
-emcc --bind -lworkerfs.js -o pmread.js pmread.cpp -s WASM=1
+emcc --bind -lworkerfs.js -o pmread.js pmread.cpp -s WASM=1 -s ALLOW_MEMORY_GROWTH=1
