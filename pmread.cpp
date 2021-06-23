@@ -27,7 +27,7 @@ vector<float> surfaceReader (string path,
             perror("File opening failed");
         }
         surf_im_petromod_bin(fp, &surf);
-
+        fclose(fp);
        }
     else if (type == "irapbin") {
         //not implemented
