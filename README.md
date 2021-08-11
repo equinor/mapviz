@@ -1,5 +1,6 @@
 ## What is it
 Plot surface grid data in 3D. Support reading surface grid data from common subsurface formats
+<img src="./example/screenshot.PNG">
 
 ## Functionalities
 
