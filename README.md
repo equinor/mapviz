@@ -23,6 +23,10 @@ Plot surface grid data in 3D. Support reading surface grid data from common subs
  - Mouse events proxied to worker
  - WebGL enabled through Three.js
  - WASM + Emscripten's File System API = zero-copy read of binary files
+
+## To run
+1. Serve the files. e.g. python3 -m http.server
+2. Open the directory containing the sample PMD files
  
 ## Dependencies
  - Three.js v0.129
