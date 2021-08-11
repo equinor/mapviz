@@ -1515,7 +1515,7 @@ function createExportWrapper(name, fixedasm) {
   };
 }
 
-var wasmBinaryFile = 'pmread.wasm';
+var wasmBinaryFile = './xtgeo/pmread.wasm';
 if (!isDataURI(wasmBinaryFile)) {
   wasmBinaryFile = locateFile(wasmBinaryFile);
 }
@@ -7345,5 +7345,5 @@ run();
 
 
 
-
+export  {Module,FS,WORKERFS}
 

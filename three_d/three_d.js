@@ -1,0 +1,22 @@
+import {make_surface,	touch_start_fn,
+	touch_move_fn,
+	touch_end_fn,
+	mouse_down_fn,
+    add_surface,
+    remove_surface,
+	mouse_up_fn,
+	mouse_zoom_wrapper,
+	mouse_move_wrapper,
+	mouse_out_wrapper,
+} from './main.js';
+var three_d = {make_surface,touch_start_fn,
+	touch_move_fn,
+	touch_end_fn,
+	mouse_down_fn,
+    add_surface,
+    remove_surface,
+	mouse_up_fn,
+	mouse_zoom_wrapper,
+	mouse_move_wrapper,
+	mouse_out_wrapper}
+export default three_d;

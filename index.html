@@ -1,15 +1,17 @@
 <html>
 <head>
+    <body>
+        <p>Surface plotting using WebGL, offscreencanvas and wasm</p>
+        <div id="div_plot_area"></div>
+    </body>
+    <!-- <script type="text/javascript" src="/src/three.r81.min.js"></script> -->
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script type="module" src="run.js"></script>
+    <script>
+
+    </script>
 <script>
-    const worker = new Worker("worker.js");
-    function onClick() {
-        const f = document.getElementById("in-file").files[0];
-        worker.postMessage(["mount",f ]);
-    }
+
 </script>
 </head>
-<body>
-    <input type="file" id="in-file" />
-    <input type="button" onClick="onClick()" value="ok" />
-</body>
 </html>
