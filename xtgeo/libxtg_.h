@@ -1,6 +1,6 @@
 #pragma once
-#include "x_swap_check.c"
-#include "x_swap_endian.c"
+#include "x_swap_check.cpp"
+#include "x_swap_endian.cpp"
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>

@@ -2,7 +2,7 @@
  ***************************************************************************************
  *
  * NAME:
- *    surf_import_petromod_bin.c
+ *    surf_import_petromod_bin.cpp
  *
  *
  * DESCRIPTION:
