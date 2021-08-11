@@ -28,5 +28,5 @@ Plot surface grid data in 3D. Support reading surface grid data from common subs
  - d3 v7
 
  ## Credits
-Three js functionalities are mainly based on http://pappubahry.com/three_d/
-PMD binary file support is based on https://github.com/equinor/xtgeo/
+ - Three js functionalities are mainly based on http://pappubahry.com/three_d/
+ - PMD binary file support is based on https://github.com/equinor/xtgeo/
