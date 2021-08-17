@@ -6,6 +6,7 @@
 
    Picked up from Internet by JCR
    22-APR-2003
+    *    LGPL v3 (original code from github.com/equinor/xtgeo)
 */
 
 //#include "libxtg_.h"

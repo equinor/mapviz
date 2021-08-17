@@ -1,5 +1,5 @@
 //#include "libxtg_.h"
-
+ //*    LGPL v3 (original code from github.com/equinor/xtgeo)
 /******************************************************************************
   FUNCTION: SwapEndian
   PURPOSE:  Swap the byte order of a structure

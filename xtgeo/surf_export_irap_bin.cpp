@@ -41,7 +41,7 @@
 *           (not xmin etc ) and steps are used to define the map extent.
 *
 * LICENCE:
-*    cf. XTGeo LICENSE
+*    LGPL v3 (original code from github.com/equinor/xtgeo)
 ***************************************************************************************
 */
 
