@@ -39,7 +39,7 @@
  *           Result array is converted to C order (this file format is F order).
  *
  * LICENCE:
- *    See XTGeo licence
+ *    LGPL v3 (original code from github.com/equinor/xtgeo)
  ***************************************************************************************
  */
 

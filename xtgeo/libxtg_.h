@@ -1,3 +1,4 @@
+//LGPL v3 (original code from github.com/equinor/xtgeo)
 #pragma once
 #include "x_swap_check.cpp"
 #include "x_swap_endian.cpp"

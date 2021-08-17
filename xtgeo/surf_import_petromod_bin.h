@@ -24,7 +24,7 @@
  * TODO/ISSUES/BUGS/NOTES:
  *
  * LICENCE:
- *    See XTGeo licence
+ *    LGPL v3 (original code from github.com/equinor/xtgeo)
  ***************************************************************************************
  */
 
