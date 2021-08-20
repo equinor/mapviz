@@ -13,7 +13,7 @@ Plot surface grid data in 3D. Support reading surface grid data from common subs
  - [x] Read surface data from pmd PetroMod file
  - [ ] Irap Binary file support
  - [ ] Update camera fov on new surface
- - [ ] Adjustable vertical exaggeration
+ - [x] Adjustable vertical exaggeration
  - [ ] Independent colour scale
  - [ ] Adjustable colour scale
  - [ ] Axis labels
