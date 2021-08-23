@@ -128,7 +128,7 @@ var graph_created = false
 			plot.plot_type = "surface";
 			plot.width = 1000
 			plot.height = 1000
-			plot.ve=10
+			plot.ve=30
 			//var parent_div = document.getElementById(plot_div_id);
 		
 			plot.pixelRatio=window.devicePixelRatio ? window.devicePixelRatio : 1;

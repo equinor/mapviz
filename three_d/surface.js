@@ -223,65 +223,42 @@ function add_surface(plot, params){
 }
 
 function remove_surface (plot,name){
-	if (plot.surface_list.length >1){
-		let surf = plot.surface_list.find(surf => surf.name === name);
-		if (surf === undefined) {return} //surface not found
-		let surf_ind = plot.surface_list.findIndex(surf => surf.name === name);
-		plot.show_box =true
-		toggle_box(plot)
-		plot.show_ticks =true
-		toggle_ticks(plot)
-		plot.axis_box.geometry.dispose()
-		plot.axis_box.material.dispose()
-		for (const ticks of plot.axis_ticks_group.children){
-			ticks.geometry.dispose()
-			ticks.material.dispose()
-		}
-		for (let i = 0; i < 3; i++){
-			plot.scene.remove(plot.grid_lines_upper[i]);
-			plot.scene.remove(plot.grid_lines_lower[i]);
-		}
-		plot.show_box =true
-		plot.show_ticks = true
-	
-		const surf_obj=plot.scene.getObjectByProperty( "uuid",surf.surface.uuid )
-		plot.group_surf.remove(surf_obj)
-		surf_obj.geometry.dispose()
-		surf_obj.material.dispose()
-		if(plot.showing_mesh){
-			const surf_mesh_obj =plot.scene.getObjectByProperty( "uuid",surf.surface_mesh.uuid )
-			plot.group_mesh.remove(surf_mesh_obj)
-			surf_mesh_obj.geometry.dispose()
-			surf_mesh_obj.material.dispose()
-		}
+	let surf = plot.surface_list.find(surf => surf.name === name);
+	if (surf === undefined) {return} //surface not found
+	let surf_ind = plot.surface_list.findIndex(surf => surf.name === name);
+	plot.show_box =true
+	toggle_box(plot)
+	plot.show_ticks =true
+	toggle_ticks(plot)
+	plot.axis_box.geometry.dispose()
+	plot.axis_box.material.dispose()
+	for (const ticks of plot.axis_ticks_group.children){
+		ticks.geometry.dispose()
+		ticks.material.dispose()
+	}
+	for (let i = 0; i < 3; i++){
+		plot.scene.remove(plot.grid_lines_upper[i]);
+		plot.scene.remove(plot.grid_lines_lower[i]);
+	}
+	plot.show_box =true
+	plot.show_ticks = true
 
-		plot.surface_list.splice(surf_ind,1)
-	
-		update_plot_bounds("remove",plot)
-		resize_axes(plot)
-		update_render(plot);
-	} else {
-		let surf = plot.surface_list.find(surf => surf.name === name);
-		if (surf === undefined) {return} //surface not found
-		let surf_ind = plot.surface_list.findIndex(surf => surf.name === name);
-
-	
-		const surf_obj=plot.scene.getObjectByProperty( "uuid",surf.surface.uuid )
-		plot.group_surf.remove(surf_obj)
-		surf_obj.geometry.dispose()
-		surf_obj.material.dispose()
-		if (plot.showing_mesh){
-			const surf_mesh_obj =plot.scene.getObjectByProperty( "uuid",surf.surface_mesh.uuid )
-			plot.group_mesh.remove(surf_mesh_obj)
-			surf_mesh_obj.geometry.dispose()
-			surf_mesh_obj.material.dispose()
-		}
-		plot.surface_list.splice(surf_ind,1)
-		//update_plot_bounds("remove",plot)
-		//resize_axes(plot)
-		update_render(plot);
+	const surf_obj=plot.scene.getObjectByProperty( "uuid",surf.surface.uuid )
+	plot.group_surf.remove(surf_obj)
+	surf_obj.geometry.dispose()
+	surf_obj.material.dispose()
+	if(plot.showing_mesh){
+		const surf_mesh_obj =plot.scene.getObjectByProperty( "uuid",surf.surface_mesh.uuid )
+		plot.group_mesh.remove(surf_mesh_obj)
+		surf_mesh_obj.geometry.dispose()
+		surf_mesh_obj.material.dispose()
 	}
 
+	plot.surface_list.splice(surf_ind,1)
+	update_plot_bounds("remove",plot,surf.scaled_bound)
+	
+	resize_axes(plot)
+	update_render(plot);
 }
 
 function surf_scaled_bound (surf_scaled_coord){
@@ -306,10 +283,23 @@ function update_plot_bounds (operation, plot, surf_scaled_bound){
 		plot.current_scale = [[plot_x_min,plot_x_max],[plot_y_min,plot_y_max],[plot_z_min,plot_z_max]]
 		return
 	} else if (operation === "remove"){
-		let all_x = plot.surface_list.map(surf => surf.scaled_bound[0]).flat();
-		let all_y = plot.surface_list.map(surf => surf.scaled_bound[1]).flat();
-		let all_z = plot.surface_list.map(surf => surf.scaled_bound[2]).flat();
-		plot.current_scale = [[d3.min(all_x),d3.max(all_x)],[d3.min(all_y),d3.max(all_y)],[d3.min(all_z),d3.max(all_z)]]
+		console.log(plot.surface_list)
+		let all_x = plot.surface_list.map(surf => surf.bounds.x).flat();
+		let all_y = plot.surface_list.map(surf => surf.bounds.y).flat();
+		let all_z = plot.surface_list.map(surf => surf.bounds.z).flat();
+		let rangeX = d3.max(all_x)-d3.min(all_x)
+		let rangeY = d3.max(all_y)-d3.min(all_y)
+		let rangeZ = d3.max(all_z)-d3.min(all_z)
+		let axis_ranges=[rangeX,rangeY,rangeZ]
+		let max_fixed_range = d3.max(axis_ranges.slice(0,2))
+		let axis_scale_factor = [];
+		for (let i = 0; i < 3; i++) {
+			axis_scale_factor[i] = axis_ranges[i] / max_fixed_range;
+			if (i===2){//set VE
+			  axis_scale_factor[i] = axis_scale_factor[i]*plot.ve
+			}
+		}
+		plot.current_scale = [[-axis_scale_factor[0],axis_scale_factor[0]], [-axis_scale_factor[1],axis_scale_factor[1]], [-axis_scale_factor[2],axis_scale_factor[2]]]
 		return
 	}
 }
