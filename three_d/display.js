@@ -1145,10 +1145,8 @@ plot.grid_color = "#000000"
       if (i===2){//set VE
         axis_scale_factor[i] = axis_scale_factor[i]*plot.ve
       }
-    
   }
   plot.current_scale = [[-axis_scale_factor[0],axis_scale_factor[0]], [-axis_scale_factor[1],axis_scale_factor[1]], [-axis_scale_factor[2],axis_scale_factor[2]]]
-
 
 
 
