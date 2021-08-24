@@ -8,7 +8,6 @@ self.onmessage = function (event) {
         plot = event.data.plot;
         let params = event.data.params
         let f = params.file
-        console.log(f,params)
         readFile(f,params)
         three_d.make_surface(plot,params,canvas);
     }

@@ -22,7 +22,7 @@ var three_d = {make_surface,touch_start_fn,
 export default three_d;
 
 
-/* d3.js modules:
+/* 
 Copyright 2010-2016 Mike Bostock
 https://github.com/pappubahry/three_d
 All rights reserved.

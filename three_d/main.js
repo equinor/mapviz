@@ -27,6 +27,7 @@
 
 
 import * as THREE from 'https://cdn.skypack.dev/three@0.129.0';
+//import {GUI} from './dat.gui.module.js'
 
 import {
 	touch_start_fn,
@@ -66,8 +67,8 @@ import {
 
 import {check_surface_data_sizes,
     update_surface_input_data,
-    make_mesh_arrays,
     make_mesh_points,
+	make_mesh_arrays,
 	add_surface,
 	remove_surface,
 } from './surface.js'
@@ -182,71 +183,26 @@ function calculate_locations(plot, params, ignore_surface_colors) {
 	var return_object = {};
 	return_object.null_points = [];
 	
-	var this_loc, this_size, group, i, j;
 	var axes = ["x", "y", "z"];
 	
-	if (plot.plot_type == "scatter") {
-		return_object.plot_locations = [];
-		
-		var use_default = false;
-		
-		for (i = 0; i < params.data.length; i++) {
-			return_object.plot_locations.push([]);
-			return_object.null_points.push(0);
-			
-			for (j = 0; j < 3; j++) {
-				return_object.plot_locations[i].push(plot.scales[j](params.data[i][axes[j]]));
-				
-				if (isNaN(return_object.plot_locations[i][j]) || (params.data[i][axes[j]] === null)) {
-					return_object.plot_locations[i][j] = 0;
-					return_object.null_points[i] = 1;
-				}
-			}
-			
-			if (plot.have_any_sizes) {
-				if ((params.data[i].size === null) || (isNaN(params.data[i].size))) {
-					use_default = true;
-				} else {
-					if (plot.size_exponent != 0) {
-						this_size = plot.scales[3](params.data[i].scaled_size);
-					} else {
-						use_default = true;
-					}
-				}
-			} else {
-				use_default = true;
-			}
-			
-			if (use_default) {
-				if (plot.have_groups) {
-					group = params.data[i].group;
-				} else {
-					group = "default_group";
-				}
-				
-				this_size = plot.groups[group].default_point_height;
-			}
-			
-			return_object.plot_locations[i].push(this_size);
-		}
-	} else if (plot.plot_type == "surface") {
+
 		return_object.plot_locations = {"x": [], "y": [], "z": [], "color": []};
 		var this_color;
 		
-		for (i = 0; i < 2; i++) {
+		for (let i = 0; i < 2; i++) {
 			// x and y.
 			
-			for (j = 0; j < params.data[axes[i]].length; j++) {
+			for (let j = 0; j < params.data[axes[i]].length; j++) {
 				return_object.plot_locations[axes[i]].push(plot.scales[i](params.data[axes[i]][j]));
 			}
 		}
 		
 		// z.
-		for (i = 0; i < params.data.z.length; i++) {
+		for (let i = 0; i < params.data.z.length; i++) {
 			return_object.plot_locations.z.push([]);
 			return_object.null_points.push([]);
 			
-			for (j = 0; j < params.data.z[i].length; j++) {
+			for (let j = 0; j < params.data.z[i].length; j++) {
 				return_object.null_points[i].push(0);
 				return_object.plot_locations.z[i].push(plot.scales[2](params.data.z[i][j]));
 				
@@ -262,48 +218,15 @@ function calculate_locations(plot, params, ignore_surface_colors) {
 			} 
 			set_surface_color_scale_fn(plot, params.color_scale);
 		}
-		// if (plot.have_color_matrix) {
-		// 	var tiny_div = document.createElement("div");
-		// 	tiny_div.style.width = "1px";
-		// 	tiny_div.style.height = "1px";
-		// 	plot.parent_div.appendChild(tiny_div);
-			
-		// 	if (ignore_surface_colors) {
-		// 		for (i = 0; i < plot.mesh_points.length; i++) {
-		// 			return_object.plot_locations.color.push([]);
-					
-		// 			for (j = 0; j < plot.mesh_points[i].length; j++) {
-		// 				return_object.plot_locations.color[i].push([0, 0, 0]);
-		// 			}
-		// 		}
-		// 	} else {
-		// 		for (i = 0; i < params.data.color.length; i++) {
-		// 			return_object.plot_locations.color.push([]);
-					
-		// 			for (j = 0; j < params.data.color[i].length; j++) {
-		// 				this_color = params.data.color[i][j];
-						
-		// 				if (typeof(this_color) == "string") {
-		// 					this_color = css_color_to_hex(this_color, tiny_div);
-		// 					params.data.color[i][j] = this_color;
-		// 				}
-						
-		// 				this_color = hex_to_rgb_obj(this_color);
-		// 				return_object.plot_locations.color[i].push([this_color.r, this_color.g, this_color.b]);
-		// 			}
-		// 		}
-		// 	}
-			
-		// 	plot.parent_div.removeChild(tiny_div);
-		// } else {
+
 			params.data.color = [];
 			var this_color, this_color_num;
 			
-			for (i = 0; i < params.data.z.length; i++) {
+			for (let i = 0; i < params.data.z.length; i++) {
 				return_object.plot_locations.color.push([]);
 				params.data.color.push([]);
 				
-				for (j = 0; j < params.data.z[i].length; j++) {
+				for (let j = 0; j < params.data.z[i].length; j++) {
 					if (return_object.null_points[i][j]) {
 						this_color = [0, 0, 0];
 						this_color_num = 0;
@@ -316,8 +239,7 @@ function calculate_locations(plot, params, ignore_surface_colors) {
 					params.data.color[i].push(this_color_num);
 				}
 			}
-		//}
-	}
+
 	
 	return return_object;
 }
@@ -1307,14 +1229,19 @@ function basic_plot_setup(plot, params,canvas) {
 	
 	// Following is used to see if we should render once a photosphere
 	// texture is loaded:
+	//const gui = new GUI()
+
 	plot.tried_initial_render = false;
 	
 	// First up, preparing the area.
 	//plot.container_height = plot.parent_div.offsetHeight;
 	plot.scene = new THREE.Scene();
 	plot.group_main = new THREE.Group();
+	plot.group_main.name="main"
 	plot.group_surf= new THREE.Group();
+	plot.group_surf.name="surface"
 	plot.group_mesh= new THREE.Group();
+	plot.group_mesh.name="mesh_grid"
 	plot.group_main.add(plot.group_surf);
 	plot.group_main.add(plot.group_mesh);
 	plot.scene.add(plot.group_main);
