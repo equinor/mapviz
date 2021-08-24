@@ -16,7 +16,7 @@ Plot surface grid data in 3D. Support reading surface grid data from common subs
  - [x] Adjustable vertical exaggeration
  - [ ] Independent colour scale
  - [ ] Adjustable colour scale
- - [ ] Axis labels
+ - [x] Axis labels
  - [ ] Coordinates label
  - [ ] Touch support
 
