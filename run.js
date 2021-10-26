@@ -109,7 +109,8 @@ var graph_created = false
 			plot.plot_type = "surface";
 			plot.width = 1000
 			plot.height = 1000
-			plot.ve=ve
+			let slider = document.getElementById("slider");
+			plot.ve=slider.value
 			//var parent_div = document.getElementById(plot_div_id);
 		
 			plot.pixelRatio=window.devicePixelRatio ? window.devicePixelRatio : 1;
