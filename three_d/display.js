@@ -944,7 +944,7 @@ function make_ticks(plot){
           vertex2 = new THREE.Vector3(
             plot.tick_lengths[i],
             plot.tick_lengths[i],
-            plot.tick_lengths[i]
+            0
           );
             
           vertex2[plot.axes[i]] = 0;

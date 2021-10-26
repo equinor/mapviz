@@ -27,6 +27,9 @@ self.onmessage = function (event) {
     if (event.data.events_name === 'mousemove'){
         three_d.mouse_move_wrapper(event.data.event,plot)
     }
+    if (event.data.events_name === 'windowResize'){
+        three_d.resizeCanvas(plot,event.data.size)
+    }
     if (event.data.add_surf){
         let surf_params = event.data.add_surf
         let f = surf_params.file
@@ -36,6 +39,17 @@ self.onmessage = function (event) {
     if (event.data.remove_surf){
         let surf_to_remove = event.data.remove_surf
         three_d.remove_surface(plot,surf_to_remove)
+    }
+    if (event.data.VE){
+        three_d.setVE(plot,event.data.VE)
+    }
+    if (event.data.view2D === "2D view"){
+        three_d.view2D(plot);
+        self.postMessage({view:"2D"})
+    }
+    if (event.data.view2D === "3D view"){
+        three_d.view3D(plot);
+        self.postMessage({view:"3D"})
     }
 }
 

@@ -8,6 +8,7 @@ Plot surface grid data in 3D. Support reading surface grid data from common subs
  - [x] Multiple surface
  - [x] Add/Remove surface
  - [x] Read surface data from pmd PetroMod file
+ - [x] Pseudo 2D view
  - [ ] Irap Binary file support
  - [ ] Update camera fov on new surface
  - [x] Adjustable vertical exaggeration

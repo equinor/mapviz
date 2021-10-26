@@ -1,30 +1,6 @@
-import {make_surface,	touch_start_fn,
-	touch_move_fn,
-	touch_end_fn,
-	mouse_down_fn,
-    add_surface,
-    remove_surface,
-	mouse_up_fn,
-	mouse_zoom_wrapper,
-	mouse_move_wrapper,
-	mouse_out_wrapper,
-} from './main.js';
-var three_d = {make_surface,touch_start_fn,
-	touch_move_fn,
-	touch_end_fn,
-	mouse_down_fn,
-    add_surface,
-    remove_surface,
-	mouse_up_fn,
-	mouse_zoom_wrapper,
-	mouse_move_wrapper,
-	mouse_out_wrapper}
-export default three_d;
 
-
-/* 
+/* d3.js modules:
 Copyright 2010-2016 Mike Bostock
-https://github.com/pappubahry/three_d
 All rights reserved.
 Redistribution and use in source and binary forms, with or without modification,
 are permitted provided that the following conditions are met:
@@ -47,3 +23,38 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
+
+
+
+import {make_surface,	touch_start_fn,
+	touch_move_fn,
+	touch_end_fn,
+	mouse_down_fn,
+    add_surface,
+    remove_surface,
+	mouse_up_fn,
+	mouse_zoom_wrapper,
+	mouse_move_wrapper,
+	mouse_out_wrapper,
+	resizeCanvas,
+	setVE,
+	view2D,
+	view3D
+
+} from './main.js';
+var three_d = {make_surface,touch_start_fn,
+	touch_move_fn,
+	touch_end_fn,
+	mouse_down_fn,
+    add_surface,
+    remove_surface,
+	mouse_up_fn,
+	mouse_zoom_wrapper,
+	mouse_move_wrapper,
+	mouse_out_wrapper,
+	resizeCanvas,
+	setVE,
+	view2D,
+	view3D
+}
+export default three_d;
