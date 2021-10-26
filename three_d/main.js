@@ -25,7 +25,7 @@
  * David Barry, 2018-07-06.
  */
 
-
+import * as d3 from "https://cdn.skypack.dev/d3@7";
 import * as THREE from 'https://cdn.skypack.dev/three@0.129.0';
 //import {GUI} from './dat.gui.module.js'
 
@@ -39,7 +39,7 @@ import {
 	mouse_move_wrapper,
 	mouse_out_wrapper,
   } from './mouse.js'
-import { get_current_camera, reset_camera_wrapper,reset_camera } from './camera.js'
+import { get_current_camera, reset_camera_wrapper,reset_camera,switch_camera_type } from './camera.js'
 import {set_surface_color_scale_fn,
 	set_surface_point_color,
 	calculate_color,
@@ -50,7 +50,8 @@ import {set_surface_color_scale_fn,
 	set_point_color,
 	set_label_color,
 	get_colors,
-	colorise_otherise_params,} from './color.js'
+	colorise_otherise_params,
+	} from './color.js'
 import {
 	update_labels,
 	toggle_grid,
@@ -118,7 +119,19 @@ function show_photosphere(plot) {
 	plot.scene.add(plot.photosphere);
 }
 
+function add_gui(plot){
+	if (plot.cube){
+		plot.scene.remove(plot.cube)
+	}
 
+	plot.scene.add(plot.cube)
+	console.log(get_current_camera(plot).position)
+	plot.cube.position.copy( get_current_camera(plot).position );
+	plot.cube.rotation.copy( get_current_camera(plot).rotation );
+	console.log(get_current_camera(plot).position)
+	plot.cube.updateMatrix();
+	plot.cube.translateZ( - 10 );
+}
 
 
 function update_render(plot) {
@@ -1230,7 +1243,6 @@ function basic_plot_setup(plot, params,canvas) {
 	// Following is used to see if we should render once a photosphere
 	// texture is loaded:
 	//const gui = new GUI()
-
 	plot.tried_initial_render = false;
 	
 	// First up, preparing the area.
@@ -1246,6 +1258,7 @@ function basic_plot_setup(plot, params,canvas) {
 	plot.group_main.add(plot.group_mesh);
 	plot.scene.add(plot.group_main);
 	canvas.style = { width: 0, height: 0 }
+	plot.canvas= canvas
 	plot.renderer = new THREE.WebGLRenderer({"canvas":canvas,"antialias": true});
 	//let pixelRatio=window.devicePixelRatio ? window.devicePixelRatio : 1
 	plot.renderer.setPixelRatio(plot.pixelRatio);
@@ -1356,13 +1369,13 @@ function basic_plot_setup(plot, params,canvas) {
 		plot.camera_distance_scale = Math.max(plot.camera_r, 1);
 	}
 	
-	plot.camera_origin = new THREE.Vector3(0, 0, 0);
+	//plot.camera_origin = new THREE.Vector3(0, 0, 0);
 	plot.init_origin = [0, 0, 0];
 	if ("init_camera_origin" in params) {
 		plot.init_origin = JSON.parse(JSON.stringify(params.init_camera_origin));
-		plot.camera_origin.x = params.init_camera_origin[0];
-		plot.camera_origin.y = params.init_camera_origin[1];
-		plot.camera_origin.z = params.init_camera_origin[2];
+		//plot.camera_origin.x = params.init_camera_origin[0];
+		//plot.camera_origin.y = params.init_camera_origin[1];
+		//plot.camera_origin.z = params.init_camera_origin[2];
 		
 		//plot.init_origin = JSON.parse(JSON.stringify(params.init_camera_origin));
 	}
@@ -1410,8 +1423,7 @@ function basic_plot_setup(plot, params,canvas) {
 		aspect,
 		0.01,
 		frustum_far);
-	
-	
+
 	plot.init_ortho_top = ortho_top;
 	plot.init_ortho_right = ortho_right;
 	
@@ -1429,7 +1441,7 @@ function basic_plot_setup(plot, params,canvas) {
 		true,
 		[plot.init_lonlat[0], plot.init_lonlat[1], plot.init_rot],
 		plot.init_origin);
-	
+	plot.init_camera_angle = [plot.init_lonlat[0], plot.init_lonlat[1], plot.init_rot]
 	plot.rotation_dir = 1;
 	if ("reverse_rotation" in params) {
 		plot.rotation_dir = params.reverse_rotation ? -1 : 1;
@@ -1473,7 +1485,11 @@ function basic_plot_setup(plot, params,canvas) {
 		});
 	}
 }
-
+function setVE(plot,ve){
+	plot.scene.scale.set(1,1,ve);
+	//reset_camera(plot, false, plot.init_camera_angle, [10,10,10])
+	update_render(plot);
+}
 function add_photosphere(plot, params) {
 	plot.photosphere_texture.minFilter = THREE.NearestFilter;
 	
@@ -1495,6 +1511,17 @@ function add_photosphere(plot, params) {
 		// loaded, so render again:
 		update_render(plot);
 	}
+}
+
+function resizeCanvas(plot, newSize){
+	let width = newSize.width*plot.plotWindowRatio.width
+	let height = newSize.height*plot.plotWindowRatio.height
+	let camera =get_current_camera(plot)
+	camera.aspect=width/height;
+	camera.updateProjectionMatrix()
+	plot.renderer.setSize( width, height );
+	plot.windowSize=newSize
+	update_render(plot);
 }
 
 function basic_plot_listeners(plot, i_plot,params) {
@@ -1520,64 +1547,9 @@ function basic_plot_listeners(plot, i_plot,params) {
 	plot.renderer.domElement.addEventListener("touchmove", touch_move_fn(plot));
 	plot.renderer.domElement.addEventListener("touchend", touch_end_fn(plot));
 	
-	if (plot.make_toggles) {
-		document.getElementById("icon_three_d_scatter_camera_" + i_plot).addEventListener("click", toggle_camera(plot));
-		document.getElementById("icon_three_d_scatter_grid_" + i_plot).addEventListener("click", toggle_grid(plot));
-		document.getElementById("icon_three_d_scatter_ticks_" + i_plot).addEventListener("click", toggle_ticks(plot));
-		document.getElementById("icon_three_d_scatter_axis_title_" + i_plot).addEventListener("click", toggle_axis_titles(plot));
-		document.getElementById("icon_three_d_scatter_box_" + i_plot).addEventListener("click", toggle_box(plot));
-	}
+
 	
-	if (plot.make_snaps) {
-		document.getElementById("icon_three_d_scatter_snap_home_" + i_plot).addEventListener("click",
-			reset_camera_wrapper(
-				plot,
-				false,
-				[plot.init_lonlat[0], plot.init_lonlat[1], plot.init_rot],
-				plot.init_origin));
-		
-		document.getElementById("icon_three_d_scatter_snap_top_" + i_plot).addEventListener("click",
-			reset_camera_wrapper(
-				plot,
-				false,
-				[0, tau/4, -tau/4],
-				[0, 0, 0]));
-		
-		document.getElementById("icon_three_d_scatter_snap_bottom_" + i_plot).addEventListener("click",
-			reset_camera_wrapper(
-				plot,
-				false,
-				[0, -tau/4, -tau/4],
-				[0, 0, 0]));
-		
-		document.getElementById("icon_three_d_scatter_snap_front_" + i_plot).addEventListener("click",
-			reset_camera_wrapper(
-				plot,
-				false,
-				[-tau/4, 0, 0],
-				[0, 0, 0]));
-		
-		document.getElementById("icon_three_d_scatter_snap_back_" + i_plot).addEventListener("click",
-			reset_camera_wrapper(
-				plot,
-				false,
-				[tau/4, 0, 0],
-				[0, 0, 0]));
-		
-		document.getElementById("icon_three_d_scatter_snap_left_" + i_plot).addEventListener("click",
-			reset_camera_wrapper(
-				plot,
-				false,
-				[0, 0, 0],
-				[0, 0, 0]));
-		
-		document.getElementById("icon_three_d_scatter_snap_right_" + i_plot).addEventListener("click",
-			reset_camera_wrapper(
-				plot,
-				false,
-				[tau/2, 0, 0],
-				[0, 0, 0]));
-	}
+
 }
 
 function custom_plot_listeners(plot, params) {
@@ -1622,7 +1594,25 @@ function custom_plot_listeners(plot, params) {
 	}
 }
 
+function view2D(plot){
+	switch_camera_type(plot,'orthographic');
+	reset_camera(
+		plot,
+		false,
+		[0, tau/4, -tau/4],
+		[0, 0, 0]);
+	update_render(plot);
+}
 
+function view3D(plot){
+	switch_camera_type(plot,'perspective');
+	reset_camera(
+		plot,
+		false,
+		plot.init_camera_angle,
+		[0, 0, 0]);
+	update_render(plot);
+}
 
 
 
@@ -1654,4 +1644,8 @@ export {get_i_plot,
 	mouse_zoom_wrapper,
 	mouse_move_wrapper,
 	mouse_out_wrapper,
+	resizeCanvas,
+	setVE,
+	view2D,
+	view3D
 }
