@@ -107,14 +107,15 @@ var graph_created = false
 			plot.mouseout=true;
 			plot.showing_mesh = false; //show grid mesh on surface
 			plot.plot_type = "surface";
-			plot.width = 1000
-			plot.height = 1000
+
 			let slider = document.getElementById("slider");
 			plot.ve=slider.value
 			//var parent_div = document.getElementById(plot_div_id);
 		
 			plot.pixelRatio=window.devicePixelRatio ? window.devicePixelRatio : 1;
-	
+			plot.plotWindowRatio={height: 0.8, width: 0.8}
+			plot.width = window.innerWidth *plot.plotWindowRatio.width
+			plot.height = window.innerHeight*plot.plotWindowRatio.height
 			var offscreen = canvas.transferControlToOffscreen();
 			let params = {};
 			params.color_scale = "plasma"
