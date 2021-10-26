@@ -28,6 +28,7 @@ self.onmessage = function (event) {
         three_d.mouse_move_wrapper(event.data.event,plot)
     }
     if (event.data.events_name === 'windowResize'){
+        console.log(plot,event.data.size)
         three_d.resizeCanvas(plot,event.data.size)
     }
     if (event.data.add_surf){

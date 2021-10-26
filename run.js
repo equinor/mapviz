@@ -86,7 +86,7 @@ var graph_created = false
 		w.postMessage({ view2D: view2d.innerHTML })
 	}
 	//resize
-	window.addEventListener('resize', () => { w.postMessage({ events_name: "windowResize", size: { height: window.innerHeight, width: window.innerWidth } }) });
+	
 
 	file_div.appendChild(slider);
 	file_div.appendChild(sliderVal)
@@ -116,6 +116,7 @@ var graph_created = false
 			plot.plotWindowRatio={height: 0.8, width: 0.8}
 			plot.width = window.innerWidth *plot.plotWindowRatio.width
 			plot.height = window.innerHeight*plot.plotWindowRatio.height
+			window.addEventListener('resize', () => { w.postMessage({ events_name: "windowResize", size: { height: window.innerHeight, width: window.innerWidth } }) });
 			var offscreen = canvas.transferControlToOffscreen();
 			let params = {};
 			params.color_scale = "plasma"
